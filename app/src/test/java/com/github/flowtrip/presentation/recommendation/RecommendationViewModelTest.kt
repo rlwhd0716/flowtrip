@@ -20,13 +20,22 @@ import org.junit.Test
 class RecommendationViewModelTest {
     @get:Rule val mainDispatcher = MainDispatcherRule()
     private val request = RecommendationRequest(TravelMode.DATE, "성수동", 120, "조용한 장소", true)
-    private fun create(handle: SavedStateHandle = SavedStateHandle()) = RecommendationViewModel(
-        handle, request, GetRecommendationsUseCase(MockRecommendationRepository()),
+    private fun requestState() = SavedStateHandle(mapOf(
+        "mode" to request.mode.name,
+        "destination" to request.destination,
+        "minutes" to request.availableMinutes,
+        "preference" to request.preference,
+        "newPlaces" to request.preferNewPlaces,
+    ))
+
+    private fun create(handle: SavedStateHandle = requestState()) = RecommendationViewModel(
+        handle, GetRecommendationsUseCase(MockRecommendationRepository()),
     )
 
     @Test fun `loading ignores actions and then shows first restaurant`() = runTest {
         val vm = create()
         assertTrue(vm.uiState.value.isLoading)
+        assertEquals(request, vm.uiState.value.request)
         vm.selectPlace()
         vm.skipPlace()
         vm.recommendAnother()
@@ -73,7 +82,7 @@ class RecommendationViewModelTest {
     }
 
     @Test fun `saved state restores candidate and decisions in new ViewModel`() = runTest {
-        val handle = SavedStateHandle()
+        val handle = requestState()
         val original = create(handle)
         advanceUntilIdle()
         original.selectPlace()
@@ -99,7 +108,7 @@ class RecommendationViewModelTest {
                 return MockRecommendationRepository().getRecommendations(request)
             }
         }
-        val vm = RecommendationViewModel(SavedStateHandle(), request, GetRecommendationsUseCase(repository))
+        val vm = RecommendationViewModel(requestState(), GetRecommendationsUseCase(repository))
         advanceUntilIdle()
         assertNotNull(vm.uiState.value.error)
         assertFalse(vm.uiState.value.isLoading)
@@ -116,7 +125,7 @@ class RecommendationViewModelTest {
         val repository = object : RecommendationRepository {
             override suspend fun getRecommendations(request: RecommendationRequest) = emptyList<Place>()
         }
-        val vm = RecommendationViewModel(SavedStateHandle(), request, GetRecommendationsUseCase(repository))
+        val vm = RecommendationViewModel(requestState(), GetRecommendationsUseCase(repository))
         advanceUntilIdle()
         assertNotNull(vm.uiState.value.error)
         assertNull(vm.uiState.value.place)

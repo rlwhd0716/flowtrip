@@ -7,6 +7,8 @@ import com.github.flowtrip.domain.model.RecommendationRequest
 import com.github.flowtrip.domain.model.TravelMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 
 val tripPreferences = listOf("풍경과 산책", "맛집 탐방", "문화와 명소", "추천에 맡기기")
 
@@ -18,7 +20,8 @@ data class TripUiState(
     val canStart: Boolean get() = destination.isNotBlank()
 }
 
-class TripViewModel(private val savedState: SavedStateHandle) : ViewModel() {
+@HiltViewModel
+class TripViewModel @Inject constructor(private val savedState: SavedStateHandle) : ViewModel() {
     private val _uiState = MutableStateFlow(TripUiState(
         savedState["destination"] ?: "",
         savedState["minutes"] ?: 120,

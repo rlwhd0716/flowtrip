@@ -29,8 +29,11 @@ SDK, AGP, Kotlin, Gradle의 기존 설정을 유지했습니다. 최초 빌드�
 ```text
 com.github.flowtrip/
 ├── MainActivity.kt                         # 수정: 앱 UI 시작점
-├── FlowTripApplication.kt                  # Application, 수동 DI 컨테이너
+├── FlowTripApplication.kt                  # @HiltAndroidApp 진입점
 ├── core/
+│   ├── di/
+│   │   ├── RepositoryModule.kt             # Repository 구현 바인딩
+│   │   └── UseCaseModule.kt                # domain UseCase 제공
 │   ├── designsystem/
 │   │   ├── FlowTripTheme.kt                # 색상, Typography, Shape, 다크 모드
 │   │   └── Components.kt                   # 공통 카드, 64dp 이상 CTA
@@ -85,8 +88,13 @@ com.github.flowtrip/
 ## 아키텍처와 상태 관리
 
 의존 방향은 `presentation → domain ← data`입니다. domain은 Android나 Compose 타입에 의존하지 않습니다.
-`FlowTripApplication`의 `AppContainer`가 Mock Repository와 UseCase를 생성하며 Navigation의 ViewModel factory에 전달합니다.
-Hilt, 데이터베이스, HTTP 클라이언트는 추가하지 않았습니다.
+Hilt가 객체 생성과 의존성 주입을 담당합니다. `@HiltAndroidApp` Application과 `@AndroidEntryPoint` Activity에서 시작해
+`RepositoryModule`의 `@Binds @Singleton`으로 Mock Repository를 연결하고, `UseCaseModule`의 `@Provides`로 UseCase를 제공합니다.
+domain에는 Hilt/Inject 어노테이션을 추가하지 않아 프레임워크 독립성을 유지합니다.
+
+각 ViewModel은 `@HiltViewModel`과 `@Inject constructor`를 사용합니다. Navigation에서 `hiltViewModel()`로 생성하므로
+각 back-stack entry의 생명주기와 `SavedStateHandle`이 유지됩니다. 추천 화면의 요청 인수도 ViewModel의 `SavedStateHandle`에서 읽습니다.
+기존 `AppContainer`와 수동 ViewModel factory는 제거했습니다. 데이터베이스와 HTTP 클라이언트는 아직 추가하지 않았습니다.
 
 화면은 `UiState`와 명시적인 이벤트 함수를 받고, ViewModel은 수정 가능한 `MutableStateFlow`를 내부에 숨겨 읽기 전용 `StateFlow`를 제공합니다.
 Navigation의 화면 진입점에서 `collectAsStateWithLifecycle()`로 수집합니다. 상태가 없는 Home에는 별도의 ViewModel을 만들지 않았습니다.
@@ -119,12 +127,20 @@ CTA 최소 높이는 64dp, 선택 컨트롤 영역은 56dp입니다. 브랜드 �
 
 | 의존성 | 버전 | 목적 |
 | --- | --- | --- |
+| `com.google.dagger:hilt-android` | 2.59.2 | DI 런타임 |
+| `com.google.dagger:hilt-compiler` | 2.59.2 | KSP 코드 생성 전용 |
+| `androidx.hilt:hilt-lifecycle-viewmodel-compose` | 1.3.0 | Compose의 `hiltViewModel()` |
 | `androidx.navigation:navigation-compose` | 2.9.0 | 화면 이동 |
 | `androidx.lifecycle:lifecycle-runtime-compose` | 2.10.0 | lifecycle-aware 상태 수집 |
 | `androidx.lifecycle:lifecycle-viewmodel-compose` | 2.10.0 | 화면별 ViewModel |
 | `androidx.lifecycle:lifecycle-viewmodel-savedstate` | 2.10.0 | 상태 저장/복원 |
 | `org.jetbrains.kotlinx:kotlinx-coroutines-android` | 1.9.0 | Main dispatcher와 코루틴 |
 | `org.jetbrains.kotlinx:kotlinx-coroutines-test` | 1.9.0 | 단위 테스트 전용 |
+
+Hilt Gradle 플러그인 2.59.2와 KSP 2.3.6을 사용합니다. AGP 9의 내장 Kotlin을 유지하며 별도 Kotlin Android/KAPT 플러그인은 추가하지 않았습니다.
+기존 SDK·Kotlin·Gradle·AGP 버전과 Core/Lifecycle 호환 버전은 그대로 유지합니다.
+설정 근거는 [Hilt Gradle 설정](https://dagger.dev/hilt/gradle-setup)과
+[Android 공식 AGP 9 이전 안내](https://developer.android.com/agents/skills/build-system/agp/agp-9-upgrade/skill)를 참고했습니다.
 
 ## 빌드와 테스트
 
@@ -145,6 +161,8 @@ CTA 최소 높이는 64dp, 선택 컨트롤 영역은 56dp입니다. 브랜드 �
 
 검증 결과:
 
+- Hilt 전환 후 Debug 빌드·Lint·Gradle 단위 테스트 9개·Android 36.1 계측 테스트 3개 재검증 통과
+- Hilt 검증에는 실제 Application/Activity 진입점, Navigation별 ViewModel 생성, 요청 인수 주입 및 Activity 재생성 시 상태 유지가 포함됨
 - Debug APK 빌드: 성공 (AAR 메타데이터 검사 포함, 검사 제외 없음)
 - Lint: 오류 0개. 최신 버전 안내, 기존 미사용 색상, 기존 중복 label 경고는 유지
 - Gradle 단위 테스트: 9개 통과 (신규 8개 + 기존 예제 1개)
@@ -161,7 +179,8 @@ UI 테스트는 여행/데이트 진입, 특수문자가 있는 목적지 전달
 ## 향후 Pleos 연동
 
 - 공식 SDK와 적용 가능한 앱 카테고리·배포 요건을 확인한 뒤 data 계층에 실제 구현을 추가합니다.
-- `RecommendationRepository`의 실제 구현을 추가하고 `AppContainer`의 연결을 교체합니다.
+- `RecommendationRepository`의 실제 구현을 추가하고 `RepositoryModule`의 `@Binds` 연결을 교체합니다.
+- API 클라이언트와 SDK처럼 외부에서 생성해야 하는 객체는 `core/di`의 별도 Module에서 `@Provides`로 제공합니다.
 - 위치·경로·차량 상태처럼 별도 책임이 생길 때 domain에 해당 계약과 모델을 추가하고, data에서 SDK를 감쌉니다.
 - NaviHelper, FusedLocation, Vehicle, TTS, STT 호출이나 SDK 타입을 Screen/ViewModel에 직접 노출하지 않습니다.
 - 권한, SDK 초기화/해제 및 생명주기, 실제 단위/오류 변환은 SDK 문서에 따라 data 및 앱 시작 계층에서 처리합니다.

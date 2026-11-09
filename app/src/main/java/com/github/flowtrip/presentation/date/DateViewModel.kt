@@ -7,6 +7,8 @@ import com.github.flowtrip.domain.model.RecommendationRequest
 import com.github.flowtrip.domain.model.TravelMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 
 val dateMoods = listOf("새로운 장소", "조용한 장소", "활동적인 장소", "추천에 맡기기")
 
@@ -17,7 +19,8 @@ data class DateUiState(
     val preferNewPlaces: Boolean = true,
 )
 
-class DateViewModel(private val savedState: SavedStateHandle) : ViewModel() {
+@HiltViewModel
+class DateViewModel @Inject constructor(private val savedState: SavedStateHandle) : ViewModel() {
     private val _uiState = MutableStateFlow(DateUiState(
         availableMinutes = savedState["minutes"] ?: 120,
         mood = savedState["mood"] ?: dateMoods.first(),

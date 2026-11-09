@@ -6,11 +6,14 @@ import androidx.lifecycle.viewModelScope
 import com.github.flowtrip.domain.model.Place
 import com.github.flowtrip.domain.model.RecommendationRequest
 import com.github.flowtrip.domain.model.RecommendationStage
+import com.github.flowtrip.domain.model.TravelMode
 import com.github.flowtrip.domain.usecase.GetRecommendationsUseCase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 
 data class RecommendationUiState(
     val request: RecommendationRequest,
@@ -24,11 +27,18 @@ data class RecommendationUiState(
     val isComplete: Boolean get() = stageIndex >= RecommendationStage.entries.size
 }
 
-class RecommendationViewModel(
+@HiltViewModel
+class RecommendationViewModel @Inject constructor(
     private val savedState: SavedStateHandle,
-    request: RecommendationRequest,
     private val getRecommendations: GetRecommendationsUseCase,
 ) : ViewModel() {
+    private val request = RecommendationRequest(
+        mode = TravelMode.valueOf(requireNotNull(savedState.get<String>("mode"))),
+        destination = requireNotNull(savedState.get<String>("destination")),
+        availableMinutes = requireNotNull(savedState.get<Int>("minutes")),
+        preference = requireNotNull(savedState.get<String>("preference")),
+        preferNewPlaces = requireNotNull(savedState.get<Boolean>("newPlaces")),
+    )
     private var places: List<Place> = emptyList()
     private var stageIndex: Int = (savedState["stageIndex"] ?: 0).coerceIn(0, RecommendationStage.entries.size)
     private var candidateIndex: Int = savedState["candidateIndex"] ?: 0
