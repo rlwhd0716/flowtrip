@@ -28,7 +28,8 @@ fun DateScreen(state: DateUiState, onTime: (Int) -> Unit, onMood: (String) -> Un
             FlowInfoCard {
                 Text("지금 있는 곳", style = MaterialTheme.typography.titleLarge)
                 Text(state.currentLocation, style = MaterialTheme.typography.headlineMedium)
-                Text("실제 위치를 수집하지 않는 예시 위치입니다.", style = MaterialTheme.typography.bodyMedium)
+                Text(if (state.locationSource == com.github.flowtrip.domain.model.DataSource.MOCK)
+                    "실제 위치를 수집하지 않는 예시 위치입니다." else "차량 위치는 앱 사용 중 메모리에서만 처리합니다.", style = MaterialTheme.typography.bodyMedium)
             }
         }, second = {
             Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {

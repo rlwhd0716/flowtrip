@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -17,13 +18,27 @@ import com.github.flowtrip.core.designsystem.FlowPrimaryButton
 import com.github.flowtrip.domain.model.RecommendationStage
 import com.github.flowtrip.presentation.common.AdaptivePanels
 import com.github.flowtrip.presentation.common.ScreenLayout
+import com.github.flowtrip.presentation.common.PlatformStatusCard
 
 @Composable
 fun RecommendationScreen(state: RecommendationUiState, onSelect: () -> Unit, onAnother: () -> Unit,
-    onSkip: () -> Unit, onRetry: () -> Unit, onHome: () -> Unit, onBack: () -> Unit) {
+    onSkip: () -> Unit, onRetry: () -> Unit, onConfirmDestination: () -> Unit,
+    onDismissDestination: () -> Unit, onHome: () -> Unit, onBack: () -> Unit) {
+    state.destinationConfirmation?.let { place ->
+        AlertDialog(onDismissRequest = onDismissDestination,
+            title = { Text("이 장소를 목적지로 설정할까요?") },
+            text = { Text("${place.name}\n현재 목적지: ${state.navigation.destination?.name ?: "없음"}\n" +
+                if (state.navigation.source == com.github.flowtrip.domain.model.DataSource.MOCK)
+                    "Mock 내비게이션에서만 시뮬레이션합니다." else "실제 내비게이션 목적지가 변경됩니다. Mock 장소 전송은 차단됩니다.") },
+            confirmButton = { TextButton(onClick = onConfirmDestination, modifier = Modifier.heightIn(min = 64.dp)) { Text("목적지로 설정") } },
+            dismissButton = { TextButton(onClick = onDismissDestination, modifier = Modifier.heightIn(min = 64.dp)) { Text("취소") } })
+    }
     ScreenLayout(state.request.mode.title, onBack) {
         Text("${state.request.destination} · ${state.request.availableMinutes}분 · ${state.request.preference}",
             style = MaterialTheme.typography.bodyLarge)
+        PlatformStatusCard(state.navigation, state.location, state.arrivalSignal)
+        state.navigationError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyLarge) }
+        if (state.isRequestingRoute) Text("경로 탐색 결과를 기다리고 있습니다.", style = MaterialTheme.typography.bodyLarge)
         when {
             state.isLoading -> CircularProgressIndicator()
             state.error != null -> FlowInfoCard {
@@ -56,15 +71,15 @@ fun RecommendationScreen(state: RecommendationUiState, onSelect: () -> Unit, onA
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         FlowInfoCard {
                             Text("마음에 드는 장소인가요?", style = MaterialTheme.typography.titleLarge)
-                            Text("선택하거나 건너뛰면 다음 단계로 이동해요. 다른 장소 추천은 현재 단계의 후보를 바꿔요.",
+                            Text("선택 후 목적지 변경을 승인해 주세요. 경로 확인 후 다음 추천을 표시하며, 방문 완료로 기록하지 않습니다.",
                                 style = MaterialTheme.typography.bodyLarge)
                             Text("선택 ${state.selectedPlaces.size}곳 · 건너뛰기 ${state.skippedPlaces.size}곳")
                         }
-                        FlowPrimaryButton("이 장소 선택", onSelect)
-                        OutlinedButton(onClick = onAnother, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
+                        FlowPrimaryButton("이 장소 선택", onSelect, enabled = !state.isRequestingRoute)
+                        OutlinedButton(onClick = onAnother, enabled = !state.isRequestingRoute, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
                             Text("다른 장소 추천")
                         }
-                        TextButton(onClick = onSkip, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
+                        TextButton(onClick = onSkip, enabled = !state.isRequestingRoute, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
                             Text("건너뛰기")
                         }
                     }

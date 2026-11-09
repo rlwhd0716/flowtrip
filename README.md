@@ -1,7 +1,10 @@
 # FlowTrip
 
 현대자동차 Pleos Connect 공모전을 위한 차량용 여행·데이트 동행 서비스의 Android 기본 프로젝트입니다.
-현재 단계는 외부 API 없이 실행되는 Mock 프로토타입입니다. 실제 위치, 차량 상태, 경로, 방문 여부를 수집하거나 판단하지 않습니다.
+기본 빌드는 외부 API 없이 실행되는 Mock 프로토타입입니다. `-PpleosSdk=true`로 빌드하면 공식 NaviHelper·FusedLocation Adapter를 포함합니다.
+실제 SDK APK의 컴파일은 검증했지만 Pleos 차량 서비스에서의 실행은 아직 미검증입니다. 도착 신호를 방문 완료로 확정하지 않습니다.
+현재 연동 범위와 빌드 방법은 [P0 연동 결과](docs/PLEOS_INTEGRATION.md), 공식 API·권한 조사는 [SDK 조사](docs/PLEOS_SDK_RESEARCH.md),
+진행도와 남은 외부 검증은 [PROGRESS](docs/PROGRESS.md)를 참고하세요.
 
 ## 개발 환경
 
@@ -24,7 +27,7 @@ SDK, AGP, Kotlin, Gradle의 기존 설정을 유지했습니다. 최초 빌드�
 
 ## 패키지와 파일
 
-다음 트리는 `app/src/main/java/com/github/flowtrip` 아래의 최종 소스 구조이며, 기재한 파일은 모두 이번 단계에서 생성하거나 수정했습니다.
+다음 트리는 초기 뼈대의 주요 패키지 구조입니다. P0의 Domain/Repository/Platform 확장 및 조건부 소스셋의 전체 목록은 [연동 결과](docs/PLEOS_INTEGRATION.md)에 정리했습니다.
 
 ```text
 com.github.flowtrip/
@@ -94,7 +97,8 @@ domain에는 Hilt/Inject 어노테이션을 추가하지 않아 프레임워크 
 
 각 ViewModel은 `@HiltViewModel`과 `@Inject constructor`를 사용합니다. Navigation에서 `hiltViewModel()`로 생성하므로
 각 back-stack entry의 생명주기와 `SavedStateHandle`이 유지됩니다. 추천 화면의 요청 인수도 ViewModel의 `SavedStateHandle`에서 읽습니다.
-기존 `AppContainer`와 수동 ViewModel factory는 제거했습니다. 데이터베이스와 HTTP 클라이언트는 아직 추가하지 않았습니다.
+기존 `AppContainer`와 수동 ViewModel factory는 제거했습니다. `PlatformModule`은 기본 `src/mock/java`와 실제 SDK `src/pleos/java` 중 하나만 컴파일해
+Navigation/Location/UX 구현을 선택합니다. 데이터베이스와 HTTP 클라이언트는 아직 추가하지 않았습니다.
 
 화면은 `UiState`와 명시적인 이벤트 함수를 받고, ViewModel은 수정 가능한 `MutableStateFlow`를 내부에 숨겨 읽기 전용 `StateFlow`를 제공합니다.
 Navigation의 화면 진입점에서 `collectAsStateWithLifecycle()`로 수집합니다. 상태가 없는 Home에는 별도의 ViewModel을 만들지 않았습니다.
@@ -112,12 +116,12 @@ Navigation의 화면 진입점에서 `collectAsStateWithLifecycle()`로 수집�
 4. 공통 추천: 식당 → 야경 명소 → 디저트 카페 → 완료 요약
 
 - **다른 장소 추천**: 현재 단계의 두 후보를 순환합니다. 선택/건너뛰기 이력에는 기록하지 않습니다.
-- **이 장소 선택**: 현재 장소를 선택 이력에 추가하고 다음 단계로 진행합니다.
+- **이 장소 선택**: 별도 목적지 승인 창을 표시합니다. 승인 후 경로 확인이 성공해야 선택 이력에 추가하고 다음 추천 단계로 진행합니다. 승인 취소·경로 실패 시 진행하지 않습니다.
 - **건너뛰기**: 현재 장소를 건너뛴 이력에 추가하고 다음 단계로 진행합니다.
 - 마지막 단계 이후에는 선택 장소 요약과 홈 버튼을 표시합니다. 완료 후 추가 진행은 무시합니다.
 - 불러오는 중에는 상태 변경을 무시합니다. Repository 오류나 필수 단계 누락은 재시도 가능한 오류 상태로 표시합니다.
 
-장소명·위치·거리·시간은 모두 가상 데이터입니다. 두 모드 모두 같은 3단계 예시 코스를 사용합니다.
+추천 장소명·좌표·거리·시간은 모두 가상 데이터입니다. Mock 목적지는 실제 SDK로 전송하지 않습니다. 두 모드 모두 같은 3단계 예시 코스를 사용합니다.
 설정값은 요청 객체와 추천 이유에 반영되며, 실제 취향별 필터링·시간 최적화·현재 시각에 따른 야경 판정은 수행하지 않습니다.
 
 Material 3 기반으로 밝은/어두운 테마를 지원합니다. 가용 너비 760dp 이상에서는 두 열, 그 미만에서는 한 열로 배치하고 작은 가로 화면에서도 스크롤할 수 있습니다.
@@ -186,4 +190,5 @@ UI 테스트는 여행/데이트 진입, 특수문자가 있는 목적지 전달
 - 권한, SDK 초기화/해제 및 생명주기, 실제 단위/오류 변환은 SDK 문서에 따라 data 및 앱 시작 계층에서 처리합니다.
 - 주행 중 조작 정책과 제한은 공식 문서와 앱 카테고리 확인 후 구현합니다. 현재 안내 문구는 실제 조작 제한 장치가 아닙니다.
 
-현재 Manifest는 SDK 없는 프로토타입 실행을 위한 구성입니다. 실제 Pleos/Android Automotive 탑재 및 배포 호환성은 아직 검증하지 않았습니다.
+기본 빌드는 Pleos 권한·SDK 없이 실행됩니다. 실제 SDK 옵션은 공식 권한을 별도 Manifest overlay로 추가하고 AAOS UX 제한을 확인합니다.
+DO 및 Maps 앱 카테고리를 임의 선언하지 않았으며 실제 Pleos 차량 탑재·배포 승인은 별도 검증이 필요합니다.

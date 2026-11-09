@@ -2,6 +2,9 @@ package com.github.flowtrip.data.model
 
 import com.github.flowtrip.domain.model.Place
 import com.github.flowtrip.domain.model.RecommendationStage
+import com.github.flowtrip.domain.model.Coordinates
+import com.github.flowtrip.domain.model.DataSource
+import com.github.flowtrip.domain.model.Destination
 
 /** Fictional fixture data. No real venue, routing or location lookup is performed. */
 internal data class MockPlaceData(
@@ -15,6 +18,7 @@ internal data class MockPlaceData(
 ) {
     fun toDomain(context: String) = Place(
         id, stage, name, description, "$reason · $context", distanceKm, travelMinutes,
+        Destination(id, name, Coordinates(37.5445, 127.0557), DataSource.MOCK),
     )
 }
 

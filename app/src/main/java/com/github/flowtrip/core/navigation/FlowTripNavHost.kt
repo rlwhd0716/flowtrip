@@ -3,6 +3,11 @@ package com.github.flowtrip.core.navigation
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.material3.Text
+import com.github.flowtrip.domain.model.UxState
+import com.github.flowtrip.presentation.common.ScreenLayout
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
@@ -31,8 +36,14 @@ private object Routes {
 }
 
 @Composable
-fun FlowTripNavHost() {
+fun FlowTripNavHost(ux: UxState) {
     val navController = rememberNavController()
+    val focus = LocalFocusManager.current
+    LaunchedEffect(ux.allowsInteraction) { if (!ux.allowsInteraction) focus.clearFocus(force = true) }
+    if (!ux.allowsInteraction) {
+        ScreenLayout("정차 후 사용해 주세요") { Text(ux.message) }
+        return
+    }
     NavHost(navController = navController, startDestination = Routes.HOME) {
         composable(Routes.HOME) {
             HomeScreen(onTrip = { navController.navigate(Routes.TRIP) { launchSingleTop = true } },
@@ -63,6 +74,7 @@ fun FlowTripNavHost() {
             val vm: RecommendationViewModel = hiltViewModel()
             val state by vm.uiState.collectAsStateWithLifecycle()
             RecommendationScreen(state, vm::selectPlace, vm::recommendAnother, vm::skipPlace, vm::load,
+                onConfirmDestination = vm::confirmDestination, onDismissDestination = vm::dismissDestination,
                 onHome = { navController.popBackStack(Routes.HOME, inclusive = false) },
                 onBack = { navController.popBackStack() })
         }

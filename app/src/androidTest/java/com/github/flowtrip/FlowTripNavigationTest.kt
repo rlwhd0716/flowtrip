@@ -7,6 +7,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import com.github.flowtrip.data.repository.MockUxRestrictionsRepository
+import com.github.flowtrip.domain.model.UxAccess
 import org.junit.Rule
 import org.junit.Test
 
@@ -18,7 +20,7 @@ class FlowTripNavigationTest {
         compose.onNodeWithText("코스 추천 시작").assertIsNotEnabled()
         compose.onNodeWithText("여행 목적지").performTextInput("강릉 & 바다/카페?")
         compose.onNodeWithText("코스 추천 시작").performScrollTo().performClick()
-        compose.onNodeWithText("골목의 작은 식탁").assertIsDisplayed()
+        compose.onNodeWithText("골목의 작은 식탁").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("다른 장소 추천").performScrollTo().performClick()
         compose.activityRule.scenario.recreate()
         compose.onNodeWithText("온기 키친").performScrollTo().assertIsDisplayed()
@@ -29,14 +31,38 @@ class FlowTripNavigationTest {
     @Test fun dateCourseSelectSkipAndFinish() {
         compose.onNodeWithText("02  데이트 모드").performClick()
         compose.onNodeWithText("데이트 시작").performScrollTo().performClick()
-        compose.onNodeWithText("골목의 작은 식탁").assertIsDisplayed()
+        compose.onNodeWithText("골목의 작은 식탁").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("이 장소 선택").performScrollTo().performClick()
+        compose.onNodeWithText("목적지로 설정").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasText("달빛 전망길")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("달빛 전망길").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("건너뛰기").performScrollTo().performClick()
         compose.onNodeWithText("느린 오후").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("이 장소 선택").performScrollTo().performClick()
+        compose.onNodeWithText("목적지로 설정").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasText("오늘의 코스를 살펴보세요")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("선택 2곳 · 건너뛰기 1곳").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("홈으로").performScrollTo().performClick()
         compose.onNodeWithText("FlowTrip").assertIsDisplayed()
+    }
+
+    @Test fun cancelDestinationApprovalKeepsCurrentStage() {
+        compose.onNodeWithText("02  데이트 모드").performClick()
+        compose.onNodeWithText("데이트 시작").performScrollTo().performClick()
+        compose.onNodeWithText("이 장소 선택").performScrollTo().performClick()
+        compose.onNodeWithText("이 장소를 목적지로 설정할까요?").assertIsDisplayed()
+        compose.onNodeWithText("취소").performClick()
+        compose.onNodeWithText("골목의 작은 식탁").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("현재 목적지: 확인된 목적지 없음").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun restrictedUxBlocksInputsAndRestoresFormAfterRestrictionEnds() {
+        compose.onNodeWithText("01  여행 모드").performClick()
+        compose.onNodeWithText("여행 목적지").performTextInput("강릉")
+        compose.runOnUiThread { (compose.activity.ux as MockUxRestrictionsRepository).simulate(UxAccess.RESTRICTED) }
+        compose.onNodeWithText("정차 후 사용해 주세요").assertIsDisplayed()
+        compose.onNodeWithText("여행 목적지").assertDoesNotExist()
+        compose.runOnUiThread { (compose.activity.ux as MockUxRestrictionsRepository).simulate(UxAccess.SIMULATED) }
+        compose.onNodeWithText("강릉").assertIsDisplayed()
     }
 }

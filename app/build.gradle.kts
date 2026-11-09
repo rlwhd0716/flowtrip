@@ -5,7 +5,10 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val pleosSdkEnabled = providers.gradleProperty("pleosSdk").map { it.toBooleanStrict() }.orElse(false).get()
+
 android {
+    useLibrary("android.car", false)
     namespace = "com.github.flowtrip"
     compileSdk {
         version = release(36) {
@@ -14,6 +17,7 @@ android {
     }
 
     defaultConfig {
+        buildConfigField("boolean", "PLEOS_SDK_ENABLED", pleosSdkEnabled.toString())
         applicationId = "com.github.flowtrip"
         minSdk = 28
         targetSdk = 36
@@ -38,10 +42,20 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+    sourceSets.getByName("main").kotlin.directories.add(if (pleosSdkEnabled) "src/pleos/java" else "src/mock/java")
+    if (pleosSdkEnabled) {
+        sourceSets.getByName("debug").manifest.srcFile("src/pleos/AndroidManifest.xml")
+        sourceSets.getByName("release").manifest.srcFile("src/pleos/AndroidManifest.xml")
     }
 }
 
 dependencies {
+    if (pleosSdkEnabled) {
+        implementation(libs.pleos.navi)
+        implementation(libs.pleos.fused.location)
+    }
     implementation(libs.hilt.android)
     implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
     ksp(libs.hilt.compiler)

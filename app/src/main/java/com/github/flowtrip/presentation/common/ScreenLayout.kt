@@ -30,7 +30,7 @@ fun ScreenLayout(title: String, onBack: (() -> Unit)? = null, content: @Composab
                 TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 56.dp)) { Text("‹  뒤로") }
             }
             Text(title, style = MaterialTheme.typography.headlineLarge)
-            Text("정차 중 사용해 주세요 · 현재는 Mock 데이터로 동작합니다", style = MaterialTheme.typography.bodyMedium,
+            Text("정차 중 사용해 주세요 · 현재 추천 장소는 Mock 데이터입니다", style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             content()
         }

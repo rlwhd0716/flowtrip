@@ -15,11 +15,20 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import com.github.flowtrip.data.repository.MockNavigationRepository
+import com.github.flowtrip.data.repository.MockLocationRepository
+import com.github.flowtrip.data.repository.MockUxRestrictionsRepository
+import com.github.flowtrip.domain.usecase.RequestNavigationUseCase
+import com.github.flowtrip.domain.usecase.ObserveLocationUseCase
+import kotlinx.coroutines.test.TestScope
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecommendationViewModelTest {
     @get:Rule val mainDispatcher = MainDispatcherRule()
     private val request = RecommendationRequest(TravelMode.DATE, "성수동", 120, "조용한 장소", true)
+    private val navigation = MockNavigationRepository().apply { start() }
+    private val ux = MockUxRestrictionsRepository().apply { start() }
+    private val observeLocation = ObserveLocationUseCase(MockLocationRepository())
     private fun requestState() = SavedStateHandle(mapOf(
         "mode" to request.mode.name,
         "destination" to request.destination,
@@ -29,8 +38,15 @@ class RecommendationViewModelTest {
     ))
 
     private fun create(handle: SavedStateHandle = requestState()) = RecommendationViewModel(
-        handle, GetRecommendationsUseCase(MockRecommendationRepository()),
+        handle, GetRecommendationsUseCase(MockRecommendationRepository()), navigation,
+        RequestNavigationUseCase(navigation, ux), observeLocation,
     )
+
+    private fun TestScope.choose(vm: RecommendationViewModel) {
+        vm.selectPlace()
+        vm.confirmDestination()
+        advanceUntilIdle()
+    }
 
     @Test fun `loading ignores actions and then shows first restaurant`() = runTest {
         val vm = create()
@@ -63,12 +79,12 @@ class RecommendationViewModelTest {
         val vm = create()
         advanceUntilIdle()
         val restaurant = vm.uiState.value.place
-        vm.selectPlace()
+        choose(vm)
         assertEquals(RecommendationStage.NIGHT_VIEW, vm.uiState.value.place?.stage)
         val view = vm.uiState.value.place
         vm.skipPlace()
         assertEquals(RecommendationStage.DESSERT, vm.uiState.value.place?.stage)
-        vm.selectPlace()
+        choose(vm)
         val completed = vm.uiState.value
         assertTrue(completed.isComplete)
         assertNull(completed.place)
@@ -85,7 +101,7 @@ class RecommendationViewModelTest {
         val handle = requestState()
         val original = create(handle)
         advanceUntilIdle()
-        original.selectPlace()
+        choose(original)
         original.skipPlace()
         original.recommendAnother()
         val snapshot = handle.keys().associateWith { handle.get<Any?>(it) }
@@ -93,7 +109,7 @@ class RecommendationViewModelTest {
         val restored = create(restoredHandle)
         advanceUntilIdle()
         assertEquals(original.uiState.value, restored.uiState.value)
-        restored.selectPlace()
+        choose(restored)
         val completed = create(SavedStateHandle(restoredHandle.keys().associateWith { restoredHandle.get<Any?>(it) }))
         advanceUntilIdle()
         assertTrue(completed.uiState.value.isComplete)
@@ -108,7 +124,8 @@ class RecommendationViewModelTest {
                 return MockRecommendationRepository().getRecommendations(request)
             }
         }
-        val vm = RecommendationViewModel(requestState(), GetRecommendationsUseCase(repository))
+        val vm = RecommendationViewModel(requestState(), GetRecommendationsUseCase(repository), navigation,
+            RequestNavigationUseCase(navigation, ux), observeLocation)
         advanceUntilIdle()
         assertNotNull(vm.uiState.value.error)
         assertFalse(vm.uiState.value.isLoading)
@@ -125,9 +142,44 @@ class RecommendationViewModelTest {
         val repository = object : RecommendationRepository {
             override suspend fun getRecommendations(request: RecommendationRequest) = emptyList<Place>()
         }
-        val vm = RecommendationViewModel(requestState(), GetRecommendationsUseCase(repository))
+        val vm = RecommendationViewModel(requestState(), GetRecommendationsUseCase(repository), navigation,
+            RequestNavigationUseCase(navigation, ux), observeLocation)
         advanceUntilIdle()
         assertNotNull(vm.uiState.value.error)
         assertNull(vm.uiState.value.place)
+    }
+
+    @Test fun `selection needs separate consent and failure never advances`() = runTest {
+        val vm = create()
+        advanceUntilIdle()
+        vm.selectPlace()
+        assertNotNull(vm.uiState.value.destinationConfirmation)
+        assertNull(navigation.state.value.destination)
+        vm.dismissDestination()
+        assertNull(vm.uiState.value.destinationConfirmation)
+        assertTrue(vm.uiState.value.selectedPlaces.isEmpty())
+        navigation.failNextRoute = true
+        choose(vm)
+        assertEquals(0, vm.uiState.value.stageIndex)
+        assertTrue(vm.uiState.value.selectedPlaces.isEmpty())
+        assertNotNull(vm.uiState.value.navigationError)
+        choose(vm)
+        assertEquals(1, vm.uiState.value.stageIndex)
+        assertEquals(1, vm.uiState.value.selectedPlaces.size)
+    }
+
+    @Test fun `arrival is delivered to recommendation state without visit completion or auto advance`() = runTest {
+        val vm = create()
+        advanceUntilIdle()
+        choose(vm)
+        val before = vm.uiState.value
+        navigation.simulateArrival()
+        advanceUntilIdle()
+        assertNotNull(vm.uiState.value.arrivalSignal)
+        assertEquals(before.stageIndex, vm.uiState.value.stageIndex)
+        assertEquals(before.selectedPlaces, vm.uiState.value.selectedPlaces)
+        navigation.simulateExternalDestinationChange(null)
+        advanceUntilIdle()
+        assertNull(vm.uiState.value.navigation.destination)
     }
 }

@@ -22,4 +22,5 @@ data class Place(
     val reason: String,
     val distanceKm: Double,
     val travelMinutes: Int,
+    val destination: Destination? = null,
 )
