@@ -23,7 +23,7 @@ import com.github.flowtrip.presentation.common.PlatformStatusCard
 @Composable
 fun RecommendationScreen(state: RecommendationUiState, onSelect: () -> Unit, onAnother: () -> Unit,
     onSkip: () -> Unit, onRetry: () -> Unit, onConfirmDestination: () -> Unit,
-    onDismissDestination: () -> Unit, onHome: () -> Unit, onBack: () -> Unit) {
+    onDismissDestination: () -> Unit, onHome: () -> Unit, onBack: () -> Unit, onOpenMap: () -> Unit) {
     state.destinationConfirmation?.let { place ->
         AlertDialog(onDismissRequest = onDismissDestination,
             title = { Text("이 장소를 목적지로 설정할까요?") },
@@ -33,10 +33,9 @@ fun RecommendationScreen(state: RecommendationUiState, onSelect: () -> Unit, onA
             confirmButton = { TextButton(onClick = onConfirmDestination, modifier = Modifier.heightIn(min = 64.dp)) { Text("목적지로 설정") } },
             dismissButton = { TextButton(onClick = onDismissDestination, modifier = Modifier.heightIn(min = 64.dp)) { Text("취소") } })
     }
-    ScreenLayout(state.request.mode.title, onBack) {
+    ScreenLayout(state.request.mode.title, onBack, compact = true) {
         Text("${state.request.destination} · ${state.request.availableMinutes}분 · ${state.request.preference}",
             style = MaterialTheme.typography.bodyLarge)
-        PlatformStatusCard(state.navigation, state.location, state.arrivalSignal)
         state.navigationError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyLarge) }
         if (state.isRequestingRoute) Text("경로 탐색 결과를 기다리고 있습니다.", style = MaterialTheme.typography.bodyLarge)
         when {
@@ -59,16 +58,23 @@ fun RecommendationScreen(state: RecommendationUiState, onSelect: () -> Unit, onA
                 Text("STEP ${state.stageIndex + 1} / ${RecommendationStage.entries.size} · ${place.stage.title}",
                     style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 AdaptivePanels(first = {
-                    FlowInfoCard {
-                        Text(place.name, style = MaterialTheme.typography.headlineMedium)
-                        Text(place.description, style = MaterialTheme.typography.bodyLarge)
-                        Text("이 장소를 추천하는 이유", style = MaterialTheme.typography.titleLarge)
-                        Text(place.reason, style = MaterialTheme.typography.bodyLarge)
-                        Text("이동 ${place.distanceKm} km · 약 ${place.travelMinutes}분 (Mock)",
-                            style = MaterialTheme.typography.labelLarge)
-                    }
+                    RecommendationMap(state, onOpenMap)
                 }, second = {
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        FlowInfoCard {
+                            Text(place.name, style = MaterialTheme.typography.headlineMedium)
+                            Text(place.description, style = MaterialTheme.typography.bodyLarge)
+                            place.destination?.address?.takeIf { it.isNotBlank() }?.let {
+                                Text(it, style = MaterialTheme.typography.bodyLarge)
+                            }
+                            Text("머무는 시간 약 ${place.visitMinutes}분 · ${place.expectedSpend}",
+                                style = MaterialTheme.typography.labelLarge)
+                            Text("주차 · ${place.parkingSummary}", style = MaterialTheme.typography.bodyLarge)
+                            Text("이 장소를 추천하는 이유", style = MaterialTheme.typography.titleLarge)
+                            Text(place.reason, style = MaterialTheme.typography.bodyLarge)
+                            Text("장소·비용·체류·주차 정보는 시연용 예시입니다. 영업 여부는 확인되지 않았습니다.",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         FlowInfoCard {
                             Text("마음에 드는 장소인가요?", style = MaterialTheme.typography.titleLarge)
                             Text("선택 후 목적지 변경을 승인해 주세요. 경로 확인 후 다음 추천을 표시하며, 방문 완료로 기록하지 않습니다.",
@@ -86,5 +92,6 @@ fun RecommendationScreen(state: RecommendationUiState, onSelect: () -> Unit, onA
                 })
             }
         }
+        PlatformStatusCard(state.navigation, state.location, state.arrivalSignal)
     }
 }

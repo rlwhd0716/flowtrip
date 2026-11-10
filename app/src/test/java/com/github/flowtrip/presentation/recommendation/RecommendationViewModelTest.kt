@@ -48,6 +48,22 @@ class RecommendationViewModelTest {
         advanceUntilIdle()
     }
 
+    @Test fun `map failure leaves recommendation and current route unchanged`() = runTest {
+        val vm = create()
+        advanceUntilIdle()
+        val before = vm.uiState.value
+        vm.openMap()
+        advanceUntilIdle()
+        val after = vm.uiState.value
+        assertFalse(after.isOpeningMap)
+        assertTrue(after.mapMessage!!.contains("Pleos"))
+        assertEquals(before.stageIndex, after.stageIndex)
+        assertEquals(before.place, after.place)
+        assertEquals(before.selectedPlaces, after.selectedPlaces)
+        assertEquals(before.navigation, after.navigation)
+        assertNull(after.destinationConfirmation)
+    }
+
     @Test fun `loading ignores actions and then shows first restaurant`() = runTest {
         val vm = create()
         assertTrue(vm.uiState.value.isLoading)

@@ -28,6 +28,8 @@ class MockNavigationRepository : NavigationRepository {
             route = if (state.value.route == RouteState.SEARCHING) RouteState.FAILED else state.value.route)
     }
     override fun refreshDestination() { /* Current mock destination is already in StateFlow. */ }
+    override suspend fun openMap(): PlatformResult =
+        PlatformResult.Failure("Pleos 지도는 실제 SDK 빌드와 Pleos Connect 환경에서 사용할 수 있습니다.")
     override suspend fun requestRoute(destination: Destination, userConfirmed: Boolean): PlatformResult = routeMutex.withLock {
         if (!userConfirmed) return@withLock PlatformResult.Failure("목적지 변경 승인이 필요합니다.")
         if (state.value.service != ServiceStatus.READY) return@withLock PlatformResult.Failure("Mock 내비게이션이 준비되지 않았습니다.")

@@ -159,7 +159,7 @@ docs/PROGRESS.md
 
 실제 옵션에만 `ai.pleos.playground:NaviHelper:3.0.5`, `ai.pleos.playground:FusedLocation:1.1.3`을 추가했다.
 Hilt/KSP/Coroutines/Compose의 기존 버전을 유지했고 추가 HTTP/DB/음성/Vehicle 라이브러리는 없다.
-실제 옵션의 사용자 권한은 `NAVI_ROUTE`, `NAVI_ROUTE_SEARCH`, `FUSED_LOCATION`뿐이며 정확한 이름/출처 및 보호 수준은 조사 문서에 정리했다.
+실제 옵션의 사용자 권한은 `NAVI_ROUTE`, `NAVI_ROUTE_SEARCH`, `NAVI_CUSTOM_MAP`, `FUSED_LOCATION`이며 정확한 이름/출처 및 보호 수준은 조사 문서에 정리했다.
 
 ## 검증
 
@@ -181,3 +181,20 @@ Hilt/KSP/Coroutines/Compose의 기존 버전을 유지했고 추가 HTTP/DB/음�
 
 단위 테스트는 명시적 승인과 UX 차단, 탐색 실패/재시도, 요청 취소, 외부 목적지 변경, 콜백 확인 순서,
 잘못된 목적지, 위치 null/만료/미지원/권한 오류, 근접 출처 일치, 도착 신호의 비자동 진행 및 입력/추천 상태 복원을 검증한다.
+
+
+## 추천 화면 지도 전환 (2026-11-10)
+
+추천 화면의 외부 지도 미리보기를 제거하고 `Pleos 지도 열기`를 연결했습니다.
+`NavigationRepository.openMap()` → UX 제한 확인 → 실제 Adapter의 SDK 준비/권한 확인 →
+`NaviHelper.requestNavigationScreen(NavigationScreenRequest.Foreground)` 순서로 호출합니다.
+이 API는 Pleos Navigation 앱 화면 표시 요청이며 Compose 내부 지도 View가 아닙니다.
+목적지/경로/추천 단계는 바꾸지 않고, 화면 표시 요청 전달을 실제 표시 완료로 취급하지 않습니다.
+Mock에서는 미지원 안내만 제공하며 성공을 시뮬레이션하지 않습니다.
+추가 권한은 실제 빌드 전용 `pleos.car.permission.NAVI_CUSTOM_MAP`입니다.
+지도 전환이 앱의 onStop을 유발하면 기존 정책대로 SDK 연결을 정리하고 복귀 시 재연결합니다.
+실제 화면 표시 및 복귀는 Pleos Connect 환경에서 별도 검증이 필요합니다.
+
+검증: 기본 Mock 및 `-PpleosSdk=true` 각각 Debug APK·단위 테스트 28개·Lint 오류 0개.
+일반 Android 35 에뮬레이터 UI 테스트 6개 통과(지도 미지원 안내·버튼 차단·후보 변경/재생성 및 기존 추천 흐름).
+Pleos Navigation 화면의 실제 표시/복귀는 미검증입니다.

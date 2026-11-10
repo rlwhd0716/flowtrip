@@ -15,6 +15,19 @@ import org.junit.Test
 class FlowTripNavigationTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
+    @Test fun mockBuildExplainsPleosMapRequirementWithoutExternalMap() {
+        compose.onNodeWithText("02  데이트 모드").performClick()
+        compose.onNodeWithText("데이트 시작").performScrollTo().performClick()
+        compose.onNodeWithText("Pleos 내비게이션 지도").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("지도는 Pleos SDK 빌드와 Pleos Connect 환경에서 사용할 수 있습니다.")
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Pleos 지도 열기").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("다른 장소 추천").performScrollTo().performClick()
+        compose.activityRule.scenario.recreate()
+        compose.onNodeWithText("온기 키친").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Pleos 지도 열기").performScrollTo().assertIsNotEnabled()
+    }
+
     @Test fun tripInputBackNavigationAndRecreation() {
         compose.onNodeWithText("01  여행 모드").performClick()
         compose.onNodeWithText("코스 추천 시작").assertIsNotEnabled()

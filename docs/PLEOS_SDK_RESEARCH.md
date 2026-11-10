@@ -50,6 +50,7 @@ FusedLocation-1.1.3.aar 20FF6DC2EFBEA53F32D1CE4712D517FC4ABAC3A9CE4B990F4ACA52C3
 | `getRouteStateInfo()` | `onRouteStateInfo(RouteStateInfo)`의 `isRouting` 및 `naviMode` 확인 |
 | `getCurrentLocationInfo()` | `onCurrentLocationInfo(CurrentLocationInfo)` 수신. 측정 시각이 없어 STALE 대체 위치로만 사용 |
 | `requestRoute(RouteInfo)` | 사용자 승인 및 실제 출처/POI 정보 확인 후 호출. 호출 반환은 성공이 아님 |
+| `requestNavigationScreen(NavigationScreenRequest.Foreground)` | 추천 화면의 지도 열기. 실제 내비게이션 화면 표시 요청이며 목적지 변경이나 앱 내부 지도 삽입이 아님 |
 | `addListener` / `removeListener` | 전경 세션 시작/종료에 맞춰 동일 인스턴스 관리 |
 | `addWaypoint(RequestWaypointInfo)` / `getWaypointInfo()` / `removeWaypoint(WaypointIndex)` | 실제 시그니처 확인, P0 UI에서는 호출하지 않음 |
 | `requestReRoute()` / `cancelRoute()` | 실제 시그니처 확인, 자동 경로 변경 기능 미구현 |
@@ -94,6 +95,7 @@ FusedLocation-1.1.3.aar 20FF6DC2EFBEA53F32D1CE4712D517FC4ABAC3A9CE4B990F4ACA52C3
 | --- | --- | --- | --- |
 | `pleos.car.permission.NAVI_ROUTE` | 내비게이션 정보 조회 | 공개 가이드에서 보호 수준 미확정. 실행 기기의 PermissionInfo 확인 필요 | 실제 빌드만 |
 | `pleos.car.permission.NAVI_ROUTE_SEARCH` | 목적지 경로 요청 | 동일 | 실제 빌드만 |
+| `pleos.car.permission.NAVI_CUSTOM_MAP` | 내비게이션 화면 표시 요청 | 대상 기기의 PermissionInfo로 보호 수준 확인 | 실제 빌드만 |
 | `pleos.car.permission.FUSED_LOCATION` | 위치 조회/콜백 등록·해제 | 공식 문서에서 dangerous 확인 | 실제 빌드만 |
 | `pleos.car.permission.TTS_SERVICE` | 음성 합성 서비스 | 해당 가이드에 보호 수준 미명시 | 미추가 |
 | `pleos.car.permission.STT_SERVICE` | 음성 인식 서비스 | 해당 가이드에 보호 수준 미명시 | 미추가 |

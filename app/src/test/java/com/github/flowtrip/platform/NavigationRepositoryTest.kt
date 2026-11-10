@@ -4,6 +4,7 @@ import com.github.flowtrip.data.repository.MockNavigationRepository
 import com.github.flowtrip.data.repository.MockUxRestrictionsRepository
 import com.github.flowtrip.domain.model.*
 import com.github.flowtrip.domain.usecase.RequestNavigationUseCase
+import com.github.flowtrip.domain.repository.NavigationRepository
 import kotlinx.coroutines.async
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
@@ -13,6 +14,34 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class NavigationRepositoryTest {
     private val destination = Destination("test", "테스트 장소", Coordinates(37.54, 127.05), DataSource.MOCK)
+
+    @Test fun `map opening dispatches only when UX allows and never changes destination`() = runTest {
+        val navigation = MockNavigationRepository().apply { start() }
+        navigation.requestRoute(destination, true)
+        var opened = 0
+        val platform = object : NavigationRepository by navigation {
+            override suspend fun openMap(): PlatformResult { opened++; return PlatformResult.Success }
+        }
+        val ux = MockUxRestrictionsRepository().apply { start() }
+        val request = RequestNavigationUseCase(platform, ux)
+        ux.simulate(UxAccess.UNKNOWN)
+        assertTrue(request.openMap() is PlatformResult.Failure)
+        ux.simulate(UxAccess.RESTRICTED)
+        assertTrue(request.openMap() is PlatformResult.Failure)
+        assertEquals(0, opened)
+        ux.simulate(UxAccess.ALLOWED)
+        assertEquals(PlatformResult.Success, request.openMap())
+        assertEquals(1, opened)
+        assertEquals(destination, navigation.state.value.destination)
+        assertEquals(RouteState.GUIDING, navigation.state.value.route)
+    }
+
+    @Test fun `mock map reports unsupported without simulating screen success`() = runTest {
+        val navigation = MockNavigationRepository().apply { start() }
+        assertTrue(navigation.openMap() is PlatformResult.Failure)
+        assertEquals(RouteState.IDLE, navigation.state.value.route)
+        assertNull(navigation.state.value.destination)
+    }
 
     @Test fun `no approval and restricted UX cannot mutate destination`() = runTest {
         val navigation = MockNavigationRepository().apply { start() }

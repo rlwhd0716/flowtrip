@@ -76,7 +76,7 @@ fun FlowTripNavHost(ux: UxState) {
             RecommendationScreen(state, vm::selectPlace, vm::recommendAnother, vm::skipPlace, vm::load,
                 onConfirmDestination = vm::confirmDestination, onDismissDestination = vm::dismissDestination,
                 onHome = { navController.popBackStack(Routes.HOME, inclusive = false) },
-                onBack = { navController.popBackStack() })
+                onBack = { navController.popBackStack() }, onOpenMap = vm::openMap)
         }
     }
 }

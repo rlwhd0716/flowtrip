@@ -121,8 +121,24 @@ Navigation의 화면 진입점에서 `collectAsStateWithLifecycle()`로 수집�
 - 마지막 단계 이후에는 선택 장소 요약과 홈 버튼을 표시합니다. 완료 후 추가 진행은 무시합니다.
 - 불러오는 중에는 상태 변경을 무시합니다. Repository 오류나 필수 단계 누락은 재시도 가능한 오류 상태로 표시합니다.
 
-추천 장소명·좌표·거리·시간은 모두 가상 데이터입니다. Mock 목적지는 실제 SDK로 전송하지 않습니다. 두 모드 모두 같은 3단계 예시 코스를 사용합니다.
+추천 장소명·장소 정보·거리·시간은 가상 데이터입니다. 좌표는 성수·서울숲 일대의 예시 위치이며, 실제 장소 POI를 의미하지 않습니다. Mock 목적지는 실제 SDK로 전송하지 않습니다. 두 모드 모두 같은 3단계 예시 코스를 사용합니다.
 설정값은 요청 객체와 추천 이유에 반영되며, 실제 취향별 필터링·시간 최적화·현재 시각에 따른 야경 판정은 수행하지 않습니다.
+
+### 추천 화면의 Pleos 지도
+
+추천 화면의 `Pleos 지도 열기`는 NaviHelper 3.0.5의 `requestNavigationScreen(NavigationScreenRequest.Foreground)`로
+Pleos Connect 내비게이션 화면 표시를 요청합니다. 앱 내부에 지도 타일을 삽입하는 방식이 아닙니다.
+OpenStreetMap·OSRM·Leaflet WebView와 외부 지도/경로 요청은 제거했습니다. 장소 설명·예상 체류·비용·주차 예시 정보는 유지합니다.
+
+- 실제 지도는 `bash gradlew -PpleosSdk=true :app:assembleDebug`로 빌드해 Pleos Connect 에뮬레이터/차량에서 사용합니다.
+- 실제 SDK Manifest에 `pleos.car.permission.NAVI_CUSTOM_MAP`을 추가했습니다. 런타임 권한은 기기에서 dangerous로 정의된 경우 요청합니다.
+- UX 조작 허용·SDK 연결·화면 표시 권한을 확인한 뒤 호출합니다. 화면 표시 요청 전달은 실제 화면 표시 완료를 보장하지 않습니다.
+- 지도 열기는 현재 목적지·경로 및 추천 진행을 변경하지 않습니다. Mock 추천 장소를 실제 내비게이션에 보내지 않습니다.
+- 기본 Mock 빌드에서는 사용 환경 안내와 비활성 버튼을 표시하며 외부 지도로 대체하지 않습니다.
+- Pleos 내비게이션의 실제 화면 전환은 대상 환경에서 검증해야 합니다. 일반 Android 에뮬레이터는 이를 대체하지 않습니다.
+
+근거: [NaviHelper 소개](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/intro),
+[화면 표시 권한](https://document.pleos.ai/en/api-reference/connect-sdk-pleos/NaviHelper/declaring-permissions), 실제 AAR 공개 시그니처 확인.
 
 Material 3 기반으로 밝은/어두운 테마를 지원합니다. 가용 너비 760dp 이상에서는 두 열, 그 미만에서는 한 열로 배치하고 작은 가로 화면에서도 스크롤할 수 있습니다.
 CTA 최소 높이는 64dp, 선택 컨트롤 영역은 56dp입니다. 브랜드 색상과 글꼴 및 모서리는 Theme 파일에서 변경합니다.

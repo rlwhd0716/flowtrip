@@ -38,6 +38,8 @@ data class RecommendationUiState(
     val isRequestingRoute: Boolean = false,
     val navigationError: String? = null,
     val arrivalSignal: NavigationEvent.Arrived? = null,
+    val isOpeningMap: Boolean = false,
+    val mapMessage: String? = null,
 ) {
     val isComplete: Boolean get() = stageIndex >= RecommendationStage.entries.size
 }
@@ -110,6 +112,27 @@ class RecommendationViewModel @Inject constructor(
 
     fun dismissDestination() {
         if (!_uiState.value.isRequestingRoute) _uiState.update { it.copy(destinationConfirmation = null) }
+    }
+
+    fun openMap() {
+        val state = _uiState.value
+        if (state.isOpeningMap || state.isLoading || state.isRequestingRoute || state.destinationConfirmation != null) return
+        _uiState.update { it.copy(isOpeningMap = true, mapMessage = null) }
+        viewModelScope.launch {
+            try {
+                val result = requestNavigation.openMap()
+                _uiState.update { it.copy(mapMessage = when (result) {
+                    PlatformResult.Success -> "Pleos 내비게이션에 지도 표시 요청을 전달했습니다."
+                    is PlatformResult.Failure -> result.message
+                }) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _uiState.update { it.copy(mapMessage = "Pleos 지도 화면을 요청하지 못했습니다.") }
+            } finally {
+                _uiState.update { it.copy(isOpeningMap = false) }
+            }
+        }
     }
 
     fun confirmDestination() {

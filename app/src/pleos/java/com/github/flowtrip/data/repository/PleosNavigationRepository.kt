@@ -146,6 +146,24 @@ class PleosNavigationRepository(private val context: Context) : NavigationReposi
         catch (_: SecurityException) { denied() } catch (_: Exception) { fail("내비게이션 정보 조회 실패") }
     }
     override fun refreshDestination() = queryDestinationAndRoute()
+    override suspend fun openMap(): PlatformResult = withContext(Dispatchers.Main.immediate) {
+        val sdk = helper
+        when {
+            state.value.service != ServiceStatus.READY || sdk == null ->
+                PlatformResult.Failure("Pleos 내비게이션이 준비되지 않았습니다.")
+            !PleosPermissions.granted(context, PleosPermissions.NAVI_CUSTOM_MAP) ->
+                PlatformResult.Failure("Pleos 지도 화면 표시 권한이 필요합니다.")
+            else -> try {
+                sdk.requestNavigationScreen(NavigationScreenRequest.Foreground)
+                // No screen-display completion callback is provided. Do not claim the screen is visible.
+                PlatformResult.Success
+            } catch (_: SecurityException) {
+                PlatformResult.Failure("Pleos 지도 화면 표시 권한이 거부되었습니다.")
+            } catch (_: Exception) {
+                PlatformResult.Failure("Pleos 지도 화면을 요청하지 못했습니다.")
+            }
+        }
+    }
     internal fun refreshCurrentLocation() {
         if (state.value.service == ServiceStatus.READY) try { helper?.getCurrentLocationInfo() }
         catch (_: Exception) { mutableLocation.value = LocationState(DataSource.PLEOS, LocationStatus.ERROR, message = "대체 위치 조회 실패") }
