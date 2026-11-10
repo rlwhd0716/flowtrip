@@ -20,21 +20,22 @@
 ## 빌드 모드
 
 기존 단일 app 및 SDK/AGP/Kotlin/Gradle 버전을 유지했다. Flavor를 추가하지 않고 Gradle property로 조건부 Kotlin 소스를 등록한다.
-`pleosSdk`는 `true`/`false`만 허용하며 기본값은 false다. 앱 UI에서 실시간으로 실제/Mock을 자동 전환하지 않는다.
+`pleosSdk`는 `true`/`false`만 허용한다. 현재 프로젝트는 `gradle.properties`에서 true를 지정해 Android Studio의 기본 실행도 Pleos SDK를 포함한다.
+일반 Android용 Mock 실행은 `-PpleosSdk=false`를 명시한다. 앱 UI에서 실시간으로 실제/Mock을 자동 전환하지 않는다.
 
 ```powershell
 # 일반 개발 / 기존 화면 테스트 (Pleos SDK 의존성 및 사용자 권한 없음)
-.\gradlew.bat :app:assembleDebug
+.\gradlew.bat -PpleosSdk=false :app:assembleDebug
 
 # 실제 Pleos Adapter / 공식 SDK 포함
 .\gradlew.bat -PpleosSdk=true :app:assembleDebug
 ```
 
-- 기본: `src/main/java` + `src/mock/java`.
+- Mock 옵션(false): `src/main/java` + `src/mock/java`.
 - 실제: `src/main/java` + `src/pleos/java`, debug/release의 Pleos Manifest overlay 및 공식 P0 SDK 의존성.
 - 실제 빌드만 자동차 feature와 P0 권한을 선언한다. `android.car` 공유 라이브러리를 선택적으로 선언하고 SDK optional jar를 컴파일에 사용한다.
 - 실제 환경 미지원/권한 거부/연결 실패를 Mock 성공으로 바꾸지 않는다.
-- 기본 Mock 빌드도 자동차 feature가 있는 기기에서는 조작 허용 상태를 가정하지 않고 UX UNKNOWN으로 차단한다.
+- 기본 Mock 빌드도 자동차 feature가 있는 기기에서는 실제 CarUxRestrictionsManager를 사용한다. 일반 Android에서는 개발용 Mock UX를 사용한다.
 - 두 옵션은 같은 applicationId와 기본 APK 출력 경로를 사용한다. 설치/보관 전 어떤 옵션으로 빌드했는지 확인한다.
 
 ## 아키텍처
@@ -87,7 +88,9 @@ NaviHelper 대체 위치에는 측정 시각이 없어 최신 위치 및 근접 
 ## UX 안전
 
 실제 빌드는 AAOS CarUxRestrictionsManager의 초기 값 및 변경 콜백으로 화면 접근을 제어한다.
-DO 필요 또는 baseline 외 제한이 있거나 상태가 UNKNOWN이면 설정/추천 UI 대신 정차 안내를 표시하고 입력 포커스를 해제한다.
+DO가 필요하거나 상태가 UNKNOWN이면 설정/추천 UI 대신 정차 안내를 표시하고 입력 포커스를 해제한다.
+현재 Activity는 DO 미선언 정차용 UI이므로 전체 접근 판정에 `isRequiresDistractionOptimization`을 사용한다.
+`activeRestrictions`의 개별 플래그를 정차용 화면의 추가 차단 조건으로 해석하지 않는다.
 제한 해제 후 기존 Navigation controller와 화면 상태를 복원하는 흐름을 Mock 계측 테스트로 검증했다.
 GPS 속도로 주행 제한을 추정하지 않고, DO나 Maps 카테고리를 임의 선언하지 않는다.
 현재 구현은 정차/조작 허용 시 사용하는 보수적인 UI 기반이다. 주행 중 허용되는 별도 음성/단순 UI는 이번 범위에 포함하지 않는다.
@@ -98,6 +101,7 @@ GPS 속도로 주행 제한을 추정하지 않고, DO나 Maps 카테고리를 �
 
 ```text
 core/platform/PleosPermissions.kt
+core/platform/CarUxRestrictionsRepository.kt
 core/platform/UnavailableUxRestrictionsRepository.kt
 domain/model/PlatformState.kt
 domain/repository/NavigationRepository.kt
@@ -120,7 +124,6 @@ presentation/common/PlatformStatusCard.kt
 app/src/mock/java/com/github/flowtrip/core/di/PlatformModule.kt
 app/src/pleos/AndroidManifest.xml
 app/src/pleos/java/com/github/flowtrip/core/di/PlatformModule.kt
-app/src/pleos/java/com/github/flowtrip/core/platform/CarUxRestrictionsRepository.kt
 app/src/pleos/java/com/github/flowtrip/data/mapper/PleosMappers.kt
 app/src/pleos/java/com/github/flowtrip/data/repository/PleosNavigationRepository.kt
 app/src/pleos/java/com/github/flowtrip/data/repository/PleosLocationRepository.kt
@@ -165,8 +168,8 @@ Hilt/KSP/Coroutines/Compose의 기존 버전을 유지했고 추가 HTTP/DB/음�
 
 ```powershell
 # 기본 Mock (Windows 테스트 worker 인코딩 우회는 이번 명령에만 적용)
-.\gradlew.bat '-Dorg.gradle.jvmargs=-Xmx2048m -Dfile.encoding=MS949' :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
-.\gradlew.bat :app:connectedDebugAndroidTest
+.\gradlew.bat -PpleosSdk=false '-Dorg.gradle.jvmargs=-Xmx2048m -Dfile.encoding=MS949' :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+.\gradlew.bat -PpleosSdk=false :app:connectedDebugAndroidTest
 
 # 실제 SDK Adapter 컴파일 및 동일 공통 로직 단위 테스트
 .\gradlew.bat -PpleosSdk=true '-Dorg.gradle.jvmargs=-Xmx2048m -Dfile.encoding=MS949' :app:assembleDebug :app:testDebugUnitTest :app:lintDebug

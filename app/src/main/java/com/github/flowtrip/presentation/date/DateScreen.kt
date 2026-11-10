@@ -9,6 +9,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -19,6 +23,8 @@ import com.github.flowtrip.core.util.formatAvailableTime
 import com.github.flowtrip.presentation.common.AdaptivePanels
 import com.github.flowtrip.presentation.common.ChoiceGroup
 import com.github.flowtrip.presentation.common.ScreenLayout
+import com.github.flowtrip.core.designsystem.FlowTripTheme
+import com.github.flowtrip.core.designsystem.preview.FlowTripScreenPreviews
 
 @Composable
 fun DateScreen(state: DateUiState, onTime: (Int) -> Unit, onMood: (String) -> Unit,
@@ -45,5 +51,20 @@ fun DateScreen(state: DateUiState, onTime: (Int) -> Unit, onMood: (String) -> Un
                 FlowPrimaryButton("데이트 시작", onStart)
             }
         })
+    }
+}
+
+@FlowTripScreenPreviews
+@Composable
+private fun DateScreenPreview() {
+    var state by remember { mutableStateOf(DateUiState(currentLocation = "서울 성수동 (Mock)", availableMinutes = 180)) }
+    FlowTripTheme {
+        DateScreen(
+            state = state,
+            onTime = { state = state.copy(availableMinutes = it) },
+            onMood = { state = state.copy(mood = it) },
+            onNewPlaces = { state = state.copy(preferNewPlaces = it) },
+            onStart = {}, onBack = {},
+        )
     }
 }

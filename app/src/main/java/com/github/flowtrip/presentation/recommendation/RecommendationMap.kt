@@ -7,11 +7,14 @@ import com.github.flowtrip.core.designsystem.FlowInfoCard
 import com.github.flowtrip.core.designsystem.FlowPrimaryButton
 import com.github.flowtrip.domain.model.DataSource
 import com.github.flowtrip.domain.model.ServiceStatus
+import com.github.flowtrip.domain.model.RouteState
 
 @Composable
 internal fun RecommendationMap(state: RecommendationUiState, onOpenMap: () -> Unit) {
     val navigation = state.navigation
-    val available = navigation.source == DataSource.PLEOS && navigation.service == ServiceStatus.READY
+    val pleos = navigation.source == DataSource.PLEOS
+    val available = pleos && navigation.service == ServiceStatus.READY
+    val canRequest = pleos && navigation.service != ServiceStatus.UNSUPPORTED
     FlowInfoCard {
         Text("Pleos 내비게이션 지도", style = MaterialTheme.typography.titleLarge)
         Text("Pleos Connect 내비게이션 화면에서 지도와 현재 경로를 확인하세요.",
@@ -24,8 +27,15 @@ internal fun RecommendationMap(state: RecommendationUiState, onOpenMap: () -> Un
             else navigation.message ?: "Pleos 내비게이션 연결을 확인해 주세요.",
                 style = MaterialTheme.typography.bodyLarge)
         }
-        FlowPrimaryButton(if (state.isOpeningMap) "지도 요청 중…" else "Pleos 지도 열기", onOpenMap,
-            enabled = available && !state.isOpeningMap && !state.isRequestingRoute && state.destinationConfirmation == null)
+        FlowPrimaryButton(when {
+            state.isOpeningMap -> "연결 및 지도 요청 중…"
+            canRequest && !available -> "연결하고 지도 열기"
+            else -> "Pleos 지도 열기"
+        }, onOpenMap,
+            enabled = canRequest && !state.isOpeningMap && !state.isRequestingRoute && state.destinationConfirmation == null)
+        if (navigation.route == RouteState.FAILED) {
+            navigation.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        }
         state.mapMessage?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
     }
 }

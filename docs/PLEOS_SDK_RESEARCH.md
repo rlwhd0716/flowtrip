@@ -176,8 +176,10 @@ Pleos 음성 서비스 및 오디오 입력을 제공하는 에뮬레이터/차�
 
 [Pleos 주행 규제 개발 가이드](https://document.pleos.ai/docs/pleos-only/vehicle-app-developer-guide/driving-restriction-development-guide)는
 AAOS `CarUxRestrictionsManager`의 현재 제한과 변경 리스너를 사용하도록 명시한다.
-앱은 실제 옵션에서 해당 manager를 등록/해제하며, GPS 속도는 제한 판단에 사용하지 않는다.
-`isRequiresDistractionOptimization` 또는 baseline 외 제한이 있으면 복잡한 설정/추천 화면을 보수적으로 차단한다.
+앱은 Mock/실제 옵션 모두 Automotive 환경에서 해당 manager를 등록/해제하며, GPS 속도는 제한 판단에 사용하지 않는다.
+DO 미선언 정차용 화면은 `isRequiresDistractionOptimization`이 true이면 복잡한 설정/추천 화면을 차단한다.
+개별 `activeRestrictions` 플래그는 DO 화면의 기능별 제한에 사용하는 값이며 정차용 화면의 별도 접근 조건으로 사용하지 않는다.
+[AAOS 정차용 앱 UX 지침](https://developer.android.com/training/cars/parked/automotive-os).
 연결 끊김·알 수 없음도 차단하며, DO를 선언하지 않는다.
 
 [지역별 정책](https://document.pleos.ai/docs/pleos-only/vehicle-app-planning-guide/driving-restiction-policy)에 따르면 DO 미선언 앱은 주행 시 사용 제한을 받는다.

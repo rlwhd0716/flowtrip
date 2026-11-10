@@ -1,10 +1,26 @@
 # FlowTrip
 
 현대자동차 Pleos Connect 공모전을 위한 차량용 여행·데이트 동행 서비스의 Android 기본 프로젝트입니다.
-기본 빌드는 외부 API 없이 실행되는 Mock 프로토타입입니다. `-PpleosSdk=true`로 빌드하면 공식 NaviHelper·FusedLocation Adapter를 포함합니다.
+현재 프로젝트는 `gradle.properties`의 `pleosSdk=true`로 Pleos Connect 실행을 기본 설정합니다. Android Studio에서 Gradle Sync 후 실행하면 공식 NaviHelper·FusedLocation Adapter가 포함됩니다.
+일반 Android에서 Mock으로 개발할 때는 `-PpleosSdk=false`를 명시하세요. 추천 장소 데이터는 두 모드 모두 Mock입니다.
 실제 SDK APK의 컴파일은 검증했지만 Pleos 차량 서비스에서의 실행은 아직 미검증입니다. 도착 신호를 방문 완료로 확정하지 않습니다.
 현재 연동 범위와 빌드 방법은 [P0 연동 결과](docs/PLEOS_INTEGRATION.md), 공식 API·권한 조사는 [SDK 조사](docs/PLEOS_SDK_RESEARCH.md),
 진행도와 남은 외부 검증은 [PROGRESS](docs/PROGRESS.md)를 참고하세요.
+
+## Compose Preview
+
+Android Studio에서 아래 파일을 열고 우측 상단의 **Split** 또는 **Design**을 선택하면 미리보기를 볼 수 있습니다.
+표시되지 않으면 Gradle Sync 후 **Build & Refresh**를 실행하세요.
+
+- `HomeScreen.kt`: 홈
+- `TripScreen.kt`: 여행 설정
+- `DateScreen.kt`: 데이트 설정
+- `RecommendationScreen.kt`: 추천, 로딩, 오류, 목적지 승인, 코스 완료
+
+파일 위치는 `app/src/main/java/com/github/flowtrip/presentation/` 아래의 해당 화면 패키지입니다.
+각 화면은 가로/세로와 밝은/어두운 테마를 제공합니다. Preview는 샘플 상태를 사용하므로 SDK나 에뮬레이터 연결이 필요하지 않습니다.
+여행/데이트 설정은 **Interactive mode**에서 입력과 선택을 바꿀 수 있습니다. Preview의 화면 이동·실제 지도 열기·목적지 요청은 실행하지 않습니다.
+[Android 공식 Preview 안내](https://developer.android.com/develop/ui/compose/tooling/previews).
 
 ## 개발 환경
 
@@ -165,10 +181,10 @@ Hilt Gradle 플러그인 2.59.2와 KSP 2.3.6을 사용합니다. AGP 9의 내장
 ## 빌드와 테스트
 
 ```powershell
-.\gradlew.bat :app:assembleDebug :app:lintDebug
-.\gradlew.bat :app:testDebugUnitTest :app:assembleDebugAndroidTest
+.\gradlew.bat -PpleosSdk=false :app:assembleDebug :app:lintDebug
+.\gradlew.bat -PpleosSdk=false :app:testDebugUnitTest :app:assembleDebugAndroidTest
 # Android 기기 또는 에뮬레이터 연결 후:
-.\gradlew.bat :app:connectedDebugAndroidTest
+.\gradlew.bat -PpleosSdk=false :app:connectedDebugAndroidTest
 ```
 
 이 Windows 환경에서는 UTF-8 Gradle daemon이 한글 사용자 경로의 worker classpath를 전달할 때

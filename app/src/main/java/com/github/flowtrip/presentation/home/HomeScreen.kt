@@ -14,6 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.github.flowtrip.presentation.common.AdaptivePanels
 import com.github.flowtrip.presentation.common.ScreenLayout
+import com.github.flowtrip.core.designsystem.FlowTripTheme
+import com.github.flowtrip.core.designsystem.preview.FlowTripScreenPreviews
 
 @Composable
 fun HomeScreen(onTrip: () -> Unit, onDate: () -> Unit) {
@@ -37,5 +39,13 @@ private fun ModeCard(title: String, description: String, onClick: () -> Unit) {
             Text(description, style = MaterialTheme.typography.bodyLarge)
             Text("시작하기 →", style = MaterialTheme.typography.labelLarge)
         }
+    }
+}
+
+@FlowTripScreenPreviews
+@Composable
+private fun HomeScreenPreview() {
+    FlowTripTheme {
+        HomeScreen(onTrip = {}, onDate = {})
     }
 }

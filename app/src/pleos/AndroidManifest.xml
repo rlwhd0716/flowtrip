@@ -4,7 +4,4 @@
     <uses-permission android:name="pleos.car.permission.NAVI_CUSTOM_MAP" />
     <uses-permission android:name="pleos.car.permission.FUSED_LOCATION" />
     <uses-feature android:name="android.hardware.type.automotive" android:required="true" />
-    <application>
-        <uses-library android:name="android.car" android:required="false" />
-    </application>
 </manifest>

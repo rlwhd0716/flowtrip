@@ -16,7 +16,8 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object PlatformModule {
-    @Provides @Singleton fun pleosNavigation(@ApplicationContext context: Context) = PleosNavigationRepository(context)
+    @Provides @Singleton fun pleosNavigation(@ApplicationContext context: Context, ux: UxRestrictionsRepository) =
+        PleosNavigationRepository(context, ux)
     @Provides fun navigation(implementation: PleosNavigationRepository): NavigationRepository = implementation
     @Provides @Singleton fun location(@ApplicationContext context: Context, navigation: PleosNavigationRepository): LocationRepository =
         PleosLocationRepository(context, navigation)

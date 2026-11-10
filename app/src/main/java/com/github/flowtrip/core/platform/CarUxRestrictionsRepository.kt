@@ -27,9 +27,12 @@ class CarUxRestrictionsRepository(private val context: Context) : UxRestrictions
             car = Car.createCar(context, Handler(Looper.getMainLooper()), Car.CAR_WAIT_TIMEOUT_DO_NOT_WAIT) { client, ready ->
                 if (generation != session) return@createCar
                 if (!ready) {
+                    runCatching { manager?.unregisterListener() }
+                    manager = null
                     mutableState.value = UxState(message = "차량 UX 서비스 연결이 끊어졌습니다.")
                 } else try {
                     val restrictions = client.getCarManager(Car.CAR_UX_RESTRICTION_SERVICE) as CarUxRestrictionsManager
+                    runCatching { manager?.unregisterListener() }
                     manager = restrictions
                     restrictions.registerListener { value -> if (generation == session) update(value) }
                     update(restrictions.currentCarUxRestrictions)
@@ -38,7 +41,10 @@ class CarUxRestrictionsRepository(private val context: Context) : UxRestrictions
         } catch (_: Exception) { mutableState.value = UxState(message = "차량 UX 서비스에 연결할 수 없습니다.") }
     }
     private fun update(value: CarUxRestrictions) {
-        val restricted = value.isRequiresDistractionOptimization || value.activeRestrictions != CarUxRestrictions.UX_RESTRICTIONS_BASELINE
+        // This Activity is a parked UI, not declared distraction optimized.
+        // ActiveRestrictions flags apply to distraction-optimized activities;
+        // use the platform's DO requirement to decide whether this UI can run.
+        val restricted = value.isRequiresDistractionOptimization
         mutableState.value = if (restricted) UxState(UxAccess.RESTRICTED, "차량 UX 제한이 적용 중입니다. 정차 후 사용해 주세요.")
             else UxState(UxAccess.ALLOWED, "차량 플랫폼이 화면 조작을 허용했습니다.")
     }

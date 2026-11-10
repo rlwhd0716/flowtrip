@@ -13,6 +13,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.tooling.preview.Preview
+import com.github.flowtrip.core.designsystem.FlowTripTheme
+import com.github.flowtrip.core.designsystem.preview.FlowTripScreenPreviews
+import com.github.flowtrip.presentation.common.preview.FlowTripPreviewData
 import com.github.flowtrip.core.designsystem.FlowInfoCard
 import com.github.flowtrip.core.designsystem.FlowPrimaryButton
 import com.github.flowtrip.domain.model.RecommendationStage
@@ -93,5 +97,49 @@ fun RecommendationScreen(state: RecommendationUiState, onSelect: () -> Unit, onA
             }
         }
         PlatformStatusCard(state.navigation, state.location, state.arrivalSignal)
+    }
+}
+
+@FlowTripScreenPreviews
+@Composable
+private fun RecommendationScreenPreview() {
+    RecommendationPreviewContent(FlowTripPreviewData.recommendation)
+}
+
+@Preview(name = "불러오는 중", group = "추천 화면 상태", widthDp = 1280, heightDp = 720, locale = "ko")
+@Composable
+private fun RecommendationLoadingPreview() {
+    RecommendationPreviewContent(FlowTripPreviewData.recommendation.copy(isLoading = true, place = null))
+}
+
+@Preview(name = "불러오기 실패", group = "추천 화면 상태", widthDp = 1280, heightDp = 720, locale = "ko")
+@Composable
+private fun RecommendationErrorPreview() {
+    RecommendationPreviewContent(FlowTripPreviewData.recommendation.copy(place = null,
+        error = "추천 장소를 불러오지 못했어요. 다시 시도해 주세요."))
+}
+
+@Preview(name = "목적지 변경 승인", group = "추천 화면 상태", widthDp = 1280, heightDp = 720, locale = "ko")
+@Composable
+private fun RecommendationApprovalPreview() {
+    RecommendationPreviewContent(FlowTripPreviewData.recommendation.copy(destinationConfirmation = FlowTripPreviewData.place))
+}
+
+@Preview(name = "코스 완료", group = "추천 화면 상태", widthDp = 1280, heightDp = 720, locale = "ko")
+@Composable
+private fun RecommendationCompletePreview() {
+    RecommendationPreviewContent(FlowTripPreviewData.recommendation.copy(
+        stageIndex = RecommendationStage.entries.size, place = null, selectedPlaces = listOf(FlowTripPreviewData.place)))
+}
+
+@Composable
+private fun RecommendationPreviewContent(state: RecommendationUiState) {
+    FlowTripTheme {
+        RecommendationScreen(
+            state = state,
+            onSelect = {}, onAnother = {}, onSkip = {}, onRetry = {},
+            onConfirmDestination = {}, onDismissDestination = {},
+            onHome = {}, onBack = {}, onOpenMap = {},
+        )
     }
 }

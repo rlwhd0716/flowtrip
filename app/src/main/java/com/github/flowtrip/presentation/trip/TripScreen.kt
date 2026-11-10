@@ -7,6 +7,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.github.flowtrip.core.designsystem.FlowInfoCard
@@ -16,6 +20,8 @@ import com.github.flowtrip.core.util.formatAvailableTime
 import com.github.flowtrip.presentation.common.AdaptivePanels
 import com.github.flowtrip.presentation.common.ChoiceGroup
 import com.github.flowtrip.presentation.common.ScreenLayout
+import com.github.flowtrip.core.designsystem.FlowTripTheme
+import com.github.flowtrip.core.designsystem.preview.FlowTripScreenPreviews
 
 @Composable
 fun TripScreen(state: TripUiState, onDestination: (String) -> Unit, onTime: (Int) -> Unit,
@@ -38,5 +44,20 @@ fun TripScreen(state: TripUiState, onDestination: (String) -> Unit, onTime: (Int
                 FlowPrimaryButton("코스 추천 시작", onStart, enabled = state.canStart)
             }
         })
+    }
+}
+
+@FlowTripScreenPreviews
+@Composable
+private fun TripScreenPreview() {
+    var state by remember { mutableStateOf(TripUiState(destination = "강릉", availableMinutes = 180)) }
+    FlowTripTheme {
+        TripScreen(
+            state = state,
+            onDestination = { state = state.copy(destination = it) },
+            onTime = { state = state.copy(availableMinutes = it) },
+            onPreference = { state = state.copy(preference = it) },
+            onStart = {}, onBack = {},
+        )
     }
 }

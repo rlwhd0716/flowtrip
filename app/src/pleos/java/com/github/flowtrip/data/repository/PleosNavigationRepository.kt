@@ -12,12 +12,16 @@ import com.github.flowtrip.data.mapper.RoutingDecision
 import com.github.flowtrip.data.mapper.toDomain
 import com.github.flowtrip.domain.model.*
 import com.github.flowtrip.domain.repository.NavigationRepository
+import com.github.flowtrip.domain.repository.UxRestrictionsRepository
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class PleosNavigationRepository(private val context: Context) : NavigationRepository {
+class PleosNavigationRepository(
+    private val context: Context,
+    private val ux: UxRestrictionsRepository,
+) : NavigationRepository {
     private val mutableState = MutableStateFlow(NavigationState(DataSource.PLEOS))
     override val state = mutableState.asStateFlow()
     private val mutableEvents = MutableSharedFlow<NavigationEvent>(extraBufferCapacity = 32)
@@ -37,10 +41,8 @@ class PleosNavigationRepository(private val context: Context) : NavigationReposi
             mutableState.value = state.value.copy(service = ServiceStatus.UNSUPPORTED, message = "Pleos 차량 환경이 아닙니다.")
             return
         }
-        if (!PleosPermissions.granted(context, PleosPermissions.NAVI_ROUTE)) {
-            mutableState.value = state.value.copy(service = ServiceStatus.PERMISSION_DENIED, message = "내비게이션 조회 권한이 필요합니다.")
-            return
-        }
+        // Connecting and showing the map do not require information-query permission.
+        // Each API checks its own permission; map requests use NAVI_CUSTOM_MAP.
         mutableState.value = state.value.copy(service = ServiceStatus.CONNECTING, message = "Pleos Navi Service 연결 중")
         val session = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         scope = session
@@ -142,29 +144,49 @@ class PleosNavigationRepository(private val context: Context) : NavigationReposi
     }
     private fun queryDestinationAndRoute() {
         if (state.value.service != ServiceStatus.READY) return
+        if (!PleosPermissions.granted(context, PleosPermissions.NAVI_ROUTE)) return
         try { helper?.getDestinationInfo(); helper?.getRouteStateInfo() }
-        catch (_: SecurityException) { denied() } catch (_: Exception) { fail("내비게이션 정보 조회 실패") }
+        catch (_: SecurityException) { fail("내비게이션 정보 조회 권한이 거부되었습니다.") }
+        catch (_: Exception) { fail("내비게이션 정보 조회 실패") }
     }
     override fun refreshDestination() = queryDestinationAndRoute()
     override suspend fun openMap(): PlatformResult = withContext(Dispatchers.Main.immediate) {
+        if (!ux.state.value.allowsInteraction) return@withContext PlatformResult.Failure("차량 UX 제한으로 지도를 열 수 없습니다.")
+        if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
+            return@withContext PlatformResult.Failure("Pleos Connect 환경에서 지도를 열어 주세요.")
+        }
+        if (!PleosPermissions.granted(context, PleosPermissions.NAVI_CUSTOM_MAP)) {
+            return@withContext PlatformResult.Failure("Pleos 지도 화면 표시 권한(NAVI_CUSTOM_MAP)이 필요합니다.")
+        }
+        if (state.value.service != ServiceStatus.READY && state.value.service != ServiceStatus.CONNECTING) {
+            stop()
+            start()
+        }
+        val connected = withTimeoutOrNull(25_000) {
+            state.first { it.service != ServiceStatus.CONNECTING }
+        } ?: return@withContext PlatformResult.Failure("Pleos 내비게이션 연결 시간이 초과되었습니다. 다시 시도해 주세요.")
         val sdk = helper
-        when {
-            state.value.service != ServiceStatus.READY || sdk == null ->
-                PlatformResult.Failure("Pleos 내비게이션이 준비되지 않았습니다.")
-            !PleosPermissions.granted(context, PleosPermissions.NAVI_CUSTOM_MAP) ->
-                PlatformResult.Failure("Pleos 지도 화면 표시 권한이 필요합니다.")
-            else -> try {
-                sdk.requestNavigationScreen(NavigationScreenRequest.Foreground)
-                // No screen-display completion callback is provided. Do not claim the screen is visible.
-                PlatformResult.Success
-            } catch (_: SecurityException) {
-                PlatformResult.Failure("Pleos 지도 화면 표시 권한이 거부되었습니다.")
-            } catch (_: Exception) {
-                PlatformResult.Failure("Pleos 지도 화면을 요청하지 못했습니다.")
-            }
+        if (connected.service != ServiceStatus.READY || sdk == null) {
+            return@withContext PlatformResult.Failure(connected.message ?: "Pleos 내비게이션에 연결할 수 없습니다.")
+        }
+        // UX can change while waiting for the service. Check again before opening another app.
+        if (!ux.state.value.allowsInteraction) return@withContext PlatformResult.Failure("차량 UX 제한으로 지도 열기를 중단했습니다.")
+        if (!PleosPermissions.granted(context, PleosPermissions.NAVI_CUSTOM_MAP)) {
+            return@withContext PlatformResult.Failure("Pleos 지도 화면 표시 권한이 취소되었습니다.")
+        }
+        try {
+            sdk.requestNavigationScreen(NavigationScreenRequest.Foreground)
+            sdk.requestNavigationScreen(NavigationScreenRequest.MoveToCurrentLocationOnMap)
+            // No screen-display completion callback is provided. Do not claim the screen is visible.
+            PlatformResult.Success
+        } catch (_: SecurityException) {
+            PlatformResult.Failure("Pleos 지도 화면 표시 권한이 거부되었습니다.")
+        } catch (_: Exception) {
+            PlatformResult.Failure("Pleos 지도 화면을 요청하지 못했습니다.")
         }
     }
     internal fun refreshCurrentLocation() {
+        if (!PleosPermissions.granted(context, PleosPermissions.NAVI_ROUTE)) return
         if (state.value.service == ServiceStatus.READY) try { helper?.getCurrentLocationInfo() }
         catch (_: Exception) { mutableLocation.value = LocationState(DataSource.PLEOS, LocationStatus.ERROR, message = "대체 위치 조회 실패") }
     }
