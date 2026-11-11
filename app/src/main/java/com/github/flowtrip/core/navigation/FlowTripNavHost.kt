@@ -73,10 +73,10 @@ fun FlowTripNavHost(ux: UxState) {
         )) {
             val vm: RecommendationViewModel = hiltViewModel()
             val state by vm.uiState.collectAsStateWithLifecycle()
-            RecommendationScreen(state, vm::selectPlace, vm::recommendAnother, vm::skipPlace, vm::load,
-                onConfirmDestination = vm::confirmDestination, onDismissDestination = vm::dismissDestination,
+            RecommendationScreen(state, vm::selectPlace, vm::recommendAnother, vm::nextCourse, vm::skipPlace, vm::load,
+                onRetryRoute = vm::retryRoute, onCourseRoute = vm::requestRemainingCourse,
                 onHome = { navController.popBackStack(Routes.HOME, inclusive = false) },
-                onBack = { navController.popBackStack() }, onOpenMap = vm::openMap)
+                onBack = { navController.popBackStack() }, onOpenMap = vm::openMap, onTestRoute = vm::requestTestRoute)
         }
     }
 }

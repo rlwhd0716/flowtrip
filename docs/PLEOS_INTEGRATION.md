@@ -1,5 +1,8 @@
 # Pleos P0 연동 결과
 
+> 이 문서는 P0 시점의 이력입니다. 2026-11-11 이후 현재 추천 패널·경유지·분할 화면 구현과 검증은 [최신 변경 보고](SPLIT_SCREEN_INTEGRATION.md)를 우선 참고하세요.
+
+
 기준: 2026-11-10. 이번 작업은 P0 Navigation/Location 기반 및 UX 제한 처리다. P1/P2는 [SDK 조사](PLEOS_SDK_RESEARCH.md)만 수행했다.
 
 ## 연결 상태

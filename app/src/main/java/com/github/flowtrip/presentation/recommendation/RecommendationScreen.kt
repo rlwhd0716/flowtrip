@@ -1,145 +1,141 @@
 package com.github.flowtrip.presentation.recommendation
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
-import com.github.flowtrip.core.designsystem.FlowTripTheme
+import com.github.flowtrip.core.designsystem.*
 import com.github.flowtrip.core.designsystem.preview.FlowTripScreenPreviews
 import com.github.flowtrip.presentation.common.preview.FlowTripPreviewData
-import com.github.flowtrip.core.designsystem.FlowInfoCard
-import com.github.flowtrip.core.designsystem.FlowPrimaryButton
-import com.github.flowtrip.domain.model.RecommendationStage
+import com.github.flowtrip.domain.model.*
 import com.github.flowtrip.presentation.common.AdaptivePanels
 import com.github.flowtrip.presentation.common.ScreenLayout
 import com.github.flowtrip.presentation.common.PlatformStatusCard
 
 @Composable
-fun RecommendationScreen(state: RecommendationUiState, onSelect: () -> Unit, onAnother: () -> Unit,
-    onSkip: () -> Unit, onRetry: () -> Unit, onConfirmDestination: () -> Unit,
-    onDismissDestination: () -> Unit, onHome: () -> Unit, onBack: () -> Unit, onOpenMap: () -> Unit) {
-    state.destinationConfirmation?.let { place ->
-        AlertDialog(onDismissRequest = onDismissDestination,
-            title = { Text("이 장소를 목적지로 설정할까요?") },
-            text = { Text("${place.name}\n현재 목적지: ${state.navigation.destination?.name ?: "없음"}\n" +
-                if (state.navigation.source == com.github.flowtrip.domain.model.DataSource.MOCK)
-                    "Mock 내비게이션에서만 시뮬레이션합니다." else "실제 내비게이션 목적지가 변경됩니다. Mock 장소 전송은 차단됩니다.") },
-            confirmButton = { TextButton(onClick = onConfirmDestination, modifier = Modifier.heightIn(min = 64.dp)) { Text("목적지로 설정") } },
-            dismissButton = { TextButton(onClick = onDismissDestination, modifier = Modifier.heightIn(min = 64.dp)) { Text("취소") } })
-    }
-    ScreenLayout(state.request.mode.title, onBack, compact = true) {
+fun RecommendationScreen(
+    state: RecommendationUiState, onSelect: () -> Unit, onAnother: () -> Unit,
+    onNextCourse: () -> Unit, onSkip: () -> Unit, onRetry: () -> Unit, onRetryRoute: () -> Unit,
+    onCourseRoute: () -> Unit, onHome: () -> Unit, onBack: () -> Unit, onOpenMap: () -> Unit,
+    onTestRoute: (String, Boolean) -> Unit,
+) {
+    val busy = state.isRequestingRoute || state.isOpeningMap
+    ScreenLayout(state.request.mode.title, onBack = if (busy) null else onBack, compact = true) {
         Text("${state.request.destination} · ${state.request.availableMinutes}분 · ${state.request.preference}",
-            style = MaterialTheme.typography.bodyLarge)
-        state.navigationError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyLarge) }
-        if (state.isRequestingRoute) Text("경로 탐색 결과를 기다리고 있습니다.", style = MaterialTheme.typography.bodyLarge)
+            style = MaterialTheme.typography.bodyMedium)
+        NavigationTestPanel(state, onTestRoute, onRetryRoute, onOpenMap)
         when {
             state.isLoading -> CircularProgressIndicator()
             state.error != null -> FlowInfoCard {
-                Text(state.error, style = MaterialTheme.typography.bodyLarge)
+                Text(state.error)
                 FlowPrimaryButton("다시 시도", onRetry)
             }
             state.isComplete -> FlowInfoCard {
-                Text("오늘의 코스를 살펴보세요", style = MaterialTheme.typography.headlineMedium)
-                Text("선택 ${state.selectedPlaces.size}곳 · 건너뛰기 ${state.skippedPlaces.size}곳",
-                    style = MaterialTheme.typography.bodyLarge)
-                if (state.selectedPlaces.isEmpty()) Text("선택한 장소가 없어요. 다른 설정으로 다시 시작해 보세요.")
-                state.selectedPlaces.forEachIndexed { index, place ->
-                    Text("${index + 1}. ${place.name} · ${place.stage.title}", style = MaterialTheme.typography.bodyLarge)
-                }
-                FlowPrimaryButton("홈으로", onHome)
+                Text("오늘의 코스를 살펴보세요", style = MaterialTheme.typography.headlineSmall)
+                Text("선택 ${state.selectedPlaces.size}곳 · 건너뛰기 ${state.skippedPlaces.size}곳")
+                state.selectedPlaces.forEachIndexed { index, place -> Text("${index + 1}. ${place.name} · ${place.stage.title}") }
+                Text("코스 완료는 내비게이션 안내를 종료하지 않습니다.")
+                FlowPrimaryButton("홈으로", onHome, enabled = !busy)
             }
             else -> state.place?.let { place ->
-                Text("STEP ${state.stageIndex + 1} / ${RecommendationStage.entries.size} · ${place.stage.title}",
-                    style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text("현재 코스 ${state.stageIndex + 1}/${RecommendationStage.entries.size} · ${place.stage.title}",
+                    style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                // In one Pleos window these are stacked. Expanded windows expose details beside controls.
                 AdaptivePanels(first = {
-                    RecommendationMap(state, onOpenMap)
-                }, second = {
-                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         FlowInfoCard {
-                            Text(place.name, style = MaterialTheme.typography.headlineMedium)
-                            Text(place.description, style = MaterialTheme.typography.bodyLarge)
-                            place.destination?.address?.takeIf { it.isNotBlank() }?.let {
-                                Text(it, style = MaterialTheme.typography.bodyLarge)
-                            }
-                            Text("머무는 시간 약 ${place.visitMinutes}분 · ${place.expectedSpend}",
+                            Text("추천 후보 ${state.candidateIndex + 1}/${state.candidates.size.coerceAtLeast(1)}",
                                 style = MaterialTheme.typography.labelLarge)
-                            Text("주차 · ${place.parkingSummary}", style = MaterialTheme.typography.bodyLarge)
-                            Text("이 장소를 추천하는 이유", style = MaterialTheme.typography.titleLarge)
-                            Text(place.reason, style = MaterialTheme.typography.bodyLarge)
-                            Text("장소·비용·체류·주차 정보는 시연용 예시입니다. 영업 여부는 확인되지 않았습니다.",
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(place.name, style = MaterialTheme.typography.headlineSmall)
+                            Text(place.description)
+                            Text("약 ${place.visitMinutes}분 · ${place.expectedSpend}")
+                            Text(if (state.isCourseRoute) "안내 요청 범위: 남은 코스" else "안내 요청 범위: 현재 장소")
+                        }
+                        if (state.isRequestingRoute) Text("${state.pendingPlaceName} 경로 확인 중… 기존 추천을 유지합니다.")
+                        state.navigationError?.let {
+                            Text(it, color = MaterialTheme.colorScheme.error)
+                            OutlinedButton(onClick = onRetryRoute, enabled = !busy,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) { Text("경로 다시 시도") }
+                        }
+                        if (state.navigationDiffers) Text("내비게이션의 현재 경로가 이 추천과 다릅니다. 안내 상태를 확인해 주세요.",
+                            color = MaterialTheme.colorScheme.error)
+                        FlowPrimaryButton("이 장소로 길안내", onSelect, enabled = !busy)
+                        FlowPrimaryButton("다음 추천 경로", onAnother, enabled = !busy && state.candidates.size > 1)
+                        OutlinedButton(onClick = onNextCourse, enabled = !busy,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
+                            Text(if (state.stageIndex == RecommendationStage.entries.lastIndex) "코스 완료" else "다음 코스")
+                        }
+                        Text("길안내 버튼은 현재 목적지를 변경합니다. 다음 코스는 현재 단계를 완료하고 다음 장소로 안내합니다.",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                }, second = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FlowInfoCard {
+                            Text("장소 정보", style = MaterialTheme.typography.titleMedium)
+                            place.destination?.address?.takeIf { it.isNotBlank() }?.let { Text(it) }
+                            Text("주차 · ${place.parkingSummary}")
+                            Text(place.reason)
+                            Text("장소·비용·체류·주차 정보는 시연용 예시입니다.", style = MaterialTheme.typography.bodySmall)
+                            if (state.stageIndex < RecommendationStage.entries.lastIndex) {
+                                OutlinedButton(onClick = onCourseRoute, enabled = !busy,
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) { Text("남은 코스 경유 안내") }
+                                Text("경유 안내 순서: ${state.remainingCourse.joinToString(" → ") { it.name }}",
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                            TextButton(onClick = onSkip, enabled = !busy,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) { Text("이 단계 건너뛰기") }
                         }
                         FlowInfoCard {
-                            Text("마음에 드는 장소인가요?", style = MaterialTheme.typography.titleLarge)
-                            Text("선택 후 목적지 변경을 승인해 주세요. 경로 확인 후 다음 추천을 표시하며, 방문 완료로 기록하지 않습니다.",
-                                style = MaterialTheme.typography.bodyLarge)
-                            Text("선택 ${state.selectedPlaces.size}곳 · 건너뛰기 ${state.skippedPlaces.size}곳")
-                        }
-                        FlowPrimaryButton("이 장소 선택", onSelect, enabled = !state.isRequestingRoute)
-                        OutlinedButton(onClick = onAnother, enabled = !state.isRequestingRoute, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
-                            Text("다른 장소 추천")
-                        }
-                        TextButton(onClick = onSkip, enabled = !state.isRequestingRoute, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
-                            Text("건너뛰기")
+                            Text("Pleos 내비게이션", style = MaterialTheme.typography.titleMedium)
+                            Text("두 앱의 위치와 크기는 Pleos window bar에서 조절해 주세요.")
+                            OutlinedButton(onClick = onOpenMap,
+                                enabled = !busy && state.navigation.source == DataSource.PLEOS,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
+                                Text(if (state.isOpeningMap) "화면 요청 중…" else "내비게이션 화면 요청")
+                            }
+                            state.mapMessage?.let { Text(it) }
+                            if (state.navigation.source == DataSource.MOCK) Text("Mock에서는 경로 변경만 시뮬레이션합니다.")
                         }
                     }
                 })
             }
         }
+        state.lastConfirmedDestination?.let { Text("마지막 확인 목적지: ${it.name}", style = MaterialTheme.typography.bodySmall) }
+        if (state.navigation.service != ServiceStatus.READY && state.previousRouteState != null)
+            Text("이전 경로 기록이 있습니다. 현재 안내는 연결 후 다시 확인합니다.", style = MaterialTheme.typography.bodySmall)
         PlatformStatusCard(state.navigation, state.location, state.arrivalSignal)
     }
 }
 
 @FlowTripScreenPreviews
 @Composable
-private fun RecommendationScreenPreview() {
-    RecommendationPreviewContent(FlowTripPreviewData.recommendation)
-}
+private fun RecommendationScreenPreview() = RecommendationPreviewContent(FlowTripPreviewData.recommendation)
 
-@Preview(name = "불러오는 중", group = "추천 화면 상태", widthDp = 1280, heightDp = 720, locale = "ko")
+@Preview(name = "좁은 분할 창", widthDp = 360, heightDp = 720, locale = "ko")
 @Composable
-private fun RecommendationLoadingPreview() {
-    RecommendationPreviewContent(FlowTripPreviewData.recommendation.copy(isLoading = true, place = null))
-}
+private fun NarrowPanelPreview() = RecommendationPreviewContent(FlowTripPreviewData.recommendation)
 
-@Preview(name = "불러오기 실패", group = "추천 화면 상태", widthDp = 1280, heightDp = 720, locale = "ko")
+@Preview(name = "경로 변경 실패", widthDp = 480, heightDp = 960, locale = "ko")
 @Composable
-private fun RecommendationErrorPreview() {
-    RecommendationPreviewContent(FlowTripPreviewData.recommendation.copy(place = null,
-        error = "추천 장소를 불러오지 못했어요. 다시 시도해 주세요."))
-}
+private fun RouteFailurePreview() = RecommendationPreviewContent(FlowTripPreviewData.recommendation.copy(
+    navigationError = "새 경로 탐색에 실패했습니다. 기존 추천은 유지됩니다."))
 
-@Preview(name = "목적지 변경 승인", group = "추천 화면 상태", widthDp = 1280, heightDp = 720, locale = "ko")
+@Preview(name = "경로 확인 중", widthDp = 480, heightDp = 960, locale = "ko")
 @Composable
-private fun RecommendationApprovalPreview() {
-    RecommendationPreviewContent(FlowTripPreviewData.recommendation.copy(destinationConfirmation = FlowTripPreviewData.place))
-}
+private fun RoutingPreview() = RecommendationPreviewContent(FlowTripPreviewData.recommendation.copy(
+    isRequestingRoute = true, pendingPlaceName = "다음 추천 장소"))
 
-@Preview(name = "코스 완료", group = "추천 화면 상태", widthDp = 1280, heightDp = 720, locale = "ko")
+@Preview(name = "코스 완료", widthDp = 1280, heightDp = 720, locale = "ko")
 @Composable
-private fun RecommendationCompletePreview() {
-    RecommendationPreviewContent(FlowTripPreviewData.recommendation.copy(
-        stageIndex = RecommendationStage.entries.size, place = null, selectedPlaces = listOf(FlowTripPreviewData.place)))
-}
+private fun RecommendationCompletePreview() = RecommendationPreviewContent(FlowTripPreviewData.recommendation.copy(
+    stageIndex = RecommendationStage.entries.size, place = null, selectedPlaces = listOf(FlowTripPreviewData.place)))
 
 @Composable
 private fun RecommendationPreviewContent(state: RecommendationUiState) {
     FlowTripTheme {
-        RecommendationScreen(
-            state = state,
-            onSelect = {}, onAnother = {}, onSkip = {}, onRetry = {},
-            onConfirmDestination = {}, onDismissDestination = {},
-            onHome = {}, onBack = {}, onOpenMap = {},
-        )
+        RecommendationScreen(state, onSelect = {}, onAnother = {}, onNextCourse = {}, onSkip = {},
+            onRetry = {}, onRetryRoute = {}, onCourseRoute = {}, onHome = {}, onBack = {}, onOpenMap = {}, onTestRoute = { _, _ -> })
     }
 }

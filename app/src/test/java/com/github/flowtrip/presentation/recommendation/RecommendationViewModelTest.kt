@@ -2,25 +2,15 @@ package com.github.flowtrip.presentation.recommendation
 
 import androidx.lifecycle.SavedStateHandle
 import com.github.flowtrip.MainDispatcherRule
-import com.github.flowtrip.data.repository.MockRecommendationRepository
-import com.github.flowtrip.domain.model.Place
-import com.github.flowtrip.domain.model.RecommendationRequest
-import com.github.flowtrip.domain.model.RecommendationStage
-import com.github.flowtrip.domain.model.TravelMode
-import com.github.flowtrip.domain.repository.RecommendationRepository
-import com.github.flowtrip.domain.usecase.GetRecommendationsUseCase
+import com.github.flowtrip.data.repository.*
+import com.github.flowtrip.domain.model.*
+import com.github.flowtrip.domain.repository.*
+import com.github.flowtrip.domain.usecase.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
-import com.github.flowtrip.data.repository.MockNavigationRepository
-import com.github.flowtrip.data.repository.MockLocationRepository
-import com.github.flowtrip.data.repository.MockUxRestrictionsRepository
-import com.github.flowtrip.domain.usecase.RequestNavigationUseCase
-import com.github.flowtrip.domain.usecase.ObserveLocationUseCase
-import kotlinx.coroutines.test.TestScope
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecommendationViewModelTest {
@@ -30,172 +20,266 @@ class RecommendationViewModelTest {
     private val ux = MockUxRestrictionsRepository().apply { start() }
     private val observeLocation = ObserveLocationUseCase(MockLocationRepository())
     private fun requestState() = SavedStateHandle(mapOf(
-        "mode" to request.mode.name,
-        "destination" to request.destination,
-        "minutes" to request.availableMinutes,
-        "preference" to request.preference,
-        "newPlaces" to request.preferNewPlaces,
+        "mode" to request.mode.name, "destination" to request.destination, "minutes" to request.availableMinutes,
+        "preference" to request.preference, "newPlaces" to request.preferNewPlaces,
     ))
-
-    private fun create(handle: SavedStateHandle = requestState()) = RecommendationViewModel(
-        handle, GetRecommendationsUseCase(MockRecommendationRepository()), navigation,
-        RequestNavigationUseCase(navigation, ux), observeLocation,
+    private fun create(handle: SavedStateHandle = requestState(), repository: RecommendationRepository = MockRecommendationRepository(),
+        platform: NavigationRepository = navigation) = RecommendationViewModel(
+        handle, GetRecommendationsUseCase(repository), platform, RequestNavigationUseCase(platform, ux), observeLocation,
+        OfficialNavigationTestCatalog(),
     )
+    private fun snapshot(handle: SavedStateHandle) = SavedStateHandle(handle.keys().associateWith { handle.get<Any?>(it) })
 
-    private fun TestScope.choose(vm: RecommendationViewModel) {
-        vm.selectPlace()
-        vm.confirmDestination()
-        advanceUntilIdle()
-    }
-
-    @Test fun `map failure leaves recommendation and current route unchanged`() = runTest {
-        val vm = create()
-        advanceUntilIdle()
+    @Test fun `official real test requests preserve recommendation and support both targets and waypoints`() = runTest {
+        val vm = create(); advanceUntilIdle()
         val before = vm.uiState.value
-        vm.openMap()
-        advanceUntilIdle()
-        val after = vm.uiState.value
-        assertFalse(after.isOpeningMap)
-        assertTrue(after.mapMessage!!.contains("Pleos"))
-        assertEquals(before.stageIndex, after.stageIndex)
-        assertEquals(before.place, after.place)
-        assertEquals(before.selectedPlaces, after.selectedPlaces)
-        assertEquals(before.navigation, after.navigation)
-        assertNull(after.destinationConfirmation)
+        val targets = before.testDestinations
+        assertEquals(2, targets.size)
+        assertTrue(targets.all { it.source == DataSource.PLEOS && !it.poiId.isNullOrBlank() && !it.poiSubId.isNullOrBlank() })
+        for (target in targets) {
+            vm.requestTestRoute(target.id)
+            vm.nextCourse(); vm.recommendAnother()
+            advanceUntilIdle()
+            assertEquals(target, navigation.state.value.destination)
+            assertEquals(before.place, vm.uiState.value.place)
+            assertEquals(before.stageIndex, vm.uiState.value.stageIndex)
+            assertTrue(vm.uiState.value.selectedPlaces.isEmpty())
+        }
+        vm.requestTestRoute(targets.first().id, viaOther = true); advanceUntilIdle()
+        assertEquals(targets.first(), navigation.state.value.destination)
+        assertEquals(listOf(targets.last()), navigation.state.value.waypoints)
+        assertTrue(vm.uiState.value.testRouteMessage!!.contains("SDK"))
     }
 
-    @Test fun `loading ignores actions and then shows first restaurant`() = runTest {
+    @Test fun `failed real test request restores retry target after recreation without automatic resend`() = runTest {
+        val handle = requestState(); val vm = create(handle); advanceUntilIdle()
+        val target = vm.uiState.value.testDestinations.last()
+        navigation.failNextRoute = true
+        vm.requestTestRoute(target.id); advanceUntilIdle()
+        assertTrue(vm.uiState.value.isTestRouteRetry)
+        assertNotNull(vm.uiState.value.navigationError)
+        val restored = create(snapshot(handle)); advanceUntilIdle()
+        assertNull(navigation.state.value.destination)
+        restored.retryRoute(); advanceUntilIdle()
+        assertEquals(target, navigation.state.value.destination)
+        assertFalse(restored.uiState.value.isTestRouteRetry)
+        assertNull(restored.uiState.value.navigationError)
+    }
+
+    @Test fun `UX restriction prevents real test routing too`() = runTest {
+        val vm = create(); advanceUntilIdle()
+        ux.simulate(UxAccess.RESTRICTED)
+        vm.requestTestRoute(vm.uiState.value.testDestinations.first().id); advanceUntilIdle()
+        assertNull(navigation.state.value.destination)
+        assertNotNull(vm.uiState.value.navigationError)
+    }
+
+    @Test fun `loading ignores actions then reuses request and three original ordered candidates`() = runTest {
         val vm = create()
-        assertTrue(vm.uiState.value.isLoading)
-        assertEquals(request, vm.uiState.value.request)
-        vm.selectPlace()
-        vm.skipPlace()
-        vm.recommendAnother()
+        vm.selectPlace(); vm.nextCourse(); vm.recommendAnother(); vm.skipPlace()
         advanceUntilIdle()
-        assertEquals(0, vm.uiState.value.stageIndex)
-        assertEquals(RecommendationStage.RESTAURANT, vm.uiState.value.place?.stage)
+        val state = vm.uiState.value
+        assertEquals(request, state.request)
+        assertEquals(0, state.stageIndex)
+        assertEquals(listOf("food-1", "food-2", "food-3"), state.candidates.map { it.id })
+        assertTrue(state.place!!.reason.contains(request.preference))
+        assertNull(navigation.state.value.destination)
+    }
+
+    @Test fun `single action routes A B C A and does not open navigation or advance stage`() = runTest {
+        var opens = 0
+        val platform = object : NavigationRepository by navigation {
+            override suspend fun openMap(): PlatformResult { opens++; return PlatformResult.Success }
+        }
+        val vm = create(platform = platform)
+        advanceUntilIdle()
+        vm.selectPlace(); advanceUntilIdle()
+        assertEquals("food-1", vm.uiState.value.place!!.id)
+        repeat(3) { index ->
+            vm.recommendAnother()
+            // The existing card stays until routing has completed.
+            assertEquals(listOf("food-1", "food-2", "food-3")[index], vm.uiState.value.place!!.id)
+            advanceUntilIdle()
+            assertEquals(listOf("food-2", "food-3", "food-1")[index], vm.uiState.value.place!!.id)
+            assertEquals(vm.uiState.value.place!!.destination, navigation.state.value.destination)
+            assertEquals(0, vm.uiState.value.stageIndex)
+        }
+        assertEquals(0, opens)
         assertTrue(vm.uiState.value.selectedPlaces.isEmpty())
-        assertTrue(vm.uiState.value.place!!.reason.contains(request.preference))
     }
 
-    @Test fun `another recommendation changes candidate in same stage and wraps`() = runTest {
-        val vm = create()
-        advanceUntilIdle()
-        val initial = vm.uiState.value.place
+    @Test fun `failure retains candidate stage and last confirmed destination and retry targets B`() = runTest {
+        val vm = create(); advanceUntilIdle()
+        vm.selectPlace(); advanceUntilIdle()
+        val before = vm.uiState.value
+        navigation.failNextRoute = true
+        vm.recommendAnother(); advanceUntilIdle()
+        assertEquals(before.place, vm.uiState.value.place)
+        assertEquals(before.lastConfirmedDestination, vm.uiState.value.lastConfirmedDestination)
+        assertEquals(before.navigation.destination, vm.uiState.value.navigation.destination)
+        assertEquals(RouteState.GUIDING, vm.uiState.value.navigation.route)
+        assertNotNull(vm.uiState.value.navigationError)
+        vm.retryRoute(); advanceUntilIdle()
+        assertEquals("food-2", vm.uiState.value.place!!.id)
+        assertNull(vm.uiState.value.navigationError)
+    }
+
+    @Test fun `rapid route stage skip and screen actions cannot overlap an outstanding request`() = runTest {
+        val vm = create(); advanceUntilIdle()
         vm.recommendAnother()
-        assertNotEquals(initial, vm.uiState.value.place)
+        repeat(10) { vm.recommendAnother(); vm.nextCourse(); vm.selectPlace(); vm.skipPlace(); vm.openMap() }
+        assertTrue(vm.uiState.value.isRequestingRoute)
+        advanceUntilIdle()
+        assertEquals("food-2", vm.uiState.value.place!!.id)
         assertEquals(0, vm.uiState.value.stageIndex)
-        vm.recommendAnother()
-        assertEquals(initial, vm.uiState.value.place)
+        assertNull(vm.uiState.value.mapMessage)
+    }
+
+    @Test fun `arrival never auto advances and next course commits only after routing success`() = runTest {
+        val vm = create(); advanceUntilIdle()
+        vm.selectPlace(); advanceUntilIdle()
+        navigation.simulateArrival(); advanceUntilIdle()
+        assertNotNull(vm.uiState.value.arrivalSignal)
+        assertEquals(0, vm.uiState.value.stageIndex)
+        navigation.failNextRoute = true
+        vm.nextCourse(); advanceUntilIdle()
+        assertEquals(0, vm.uiState.value.stageIndex)
         assertTrue(vm.uiState.value.selectedPlaces.isEmpty())
-        assertTrue(vm.uiState.value.skippedPlaces.isEmpty())
+        vm.retryRoute(); advanceUntilIdle()
+        assertEquals(1, vm.uiState.value.stageIndex)
+        assertEquals("view-1", vm.uiState.value.place!!.id)
+        assertEquals(listOf("food-1"), vm.uiState.value.selectedPlaces.map { it.id })
+        assertNull(vm.uiState.value.arrivalSignal)
+        vm.nextCourse(); advanceUntilIdle()
+        vm.nextCourse()
+        assertTrue(vm.uiState.value.isComplete)
+        val complete = vm.uiState.value
+        vm.selectPlace(); vm.recommendAnother(); vm.nextCourse(); vm.skipPlace()
+        assertEquals(complete, vm.uiState.value)
     }
 
-    @Test fun `select and skip advance all stages and completion is terminal`() = runTest {
-        val vm = create()
-        advanceUntilIdle()
-        val restaurant = vm.uiState.value.place
-        choose(vm)
-        assertEquals(RecommendationStage.NIGHT_VIEW, vm.uiState.value.place?.stage)
-        val view = vm.uiState.value.place
-        vm.skipPlace()
-        assertEquals(RecommendationStage.DESSERT, vm.uiState.value.place?.stage)
-        choose(vm)
-        val completed = vm.uiState.value
-        assertTrue(completed.isComplete)
-        assertNull(completed.place)
-        assertEquals(2, completed.selectedPlaces.size)
-        assertEquals(restaurant, completed.selectedPlaces.first())
-        assertEquals(listOf(view), completed.skippedPlaces)
-        vm.selectPlace()
-        vm.skipPlace()
+    @Test fun `remaining course sends ordered waypoints and candidate change updates that course`() = runTest {
+        val vm = create(); advanceUntilIdle()
+        assertEquals(listOf("food-1", "view-1", "cafe-1"), vm.uiState.value.remainingCourse.map { it.id })
+        vm.requestRemainingCourse(); advanceUntilIdle()
+        assertTrue(vm.uiState.value.isCourseRoute)
+        assertEquals(listOf("food-1", "view-1"), navigation.state.value.waypoints.map { it.id })
+        assertEquals("cafe-1", navigation.state.value.destination!!.id)
+        assertFalse(vm.uiState.value.navigationDiffers)
+        vm.recommendAnother(); advanceUntilIdle()
+        assertEquals(listOf("food-2", "view-1"), navigation.state.value.waypoints.map { it.id })
+        navigation.simulateArrival(isWaypoint = true); advanceUntilIdle()
+        assertEquals(0, vm.uiState.value.stageIndex)
+        assertTrue(vm.uiState.value.arrivalSignal!!.isWaypoint)
+        vm.nextCourse(); advanceUntilIdle()
+        assertEquals(listOf("view-1"), navigation.state.value.waypoints.map { it.id })
+    }
+
+    @Test fun `external destination sync does not rewrite recommendations or auto route back`() = runTest {
+        val vm = create(); advanceUntilIdle()
+        vm.selectPlace(); advanceUntilIdle()
+        val before = vm.uiState.value.place
+        val external = before!!.destination!!.copy(id = "external", name = "외부 목적지", coordinates = Coordinates(35.0, 129.0))
+        navigation.simulateExternalDestinationChange(external); advanceUntilIdle()
+        assertEquals(external, vm.uiState.value.navigation.destination)
+        assertEquals(external, vm.uiState.value.lastConfirmedDestination)
+        assertEquals(before, vm.uiState.value.place)
+        assertTrue(vm.uiState.value.navigationDiffers)
+        navigation.simulateExternalDestinationChange(null); advanceUntilIdle()
+        assertNull(vm.uiState.value.navigation.destination)
+    }
+
+    @Test fun `restored snapshot retains actual candidates without calling recommendation backend`() = runTest {
+        val handle = requestState(); val vm = create(handle); advanceUntilIdle()
+        vm.recommendAnother(); advanceUntilIdle()
+        vm.nextCourse(); advanceUntilIdle()
+        val noReload = object : RecommendationRepository {
+            override suspend fun getRecommendations(request: RecommendationRequest): List<Place> = error("must restore")
+        }
+        val restored = create(snapshot(handle), noReload); advanceUntilIdle()
+        assertEquals(vm.uiState.value.place, restored.uiState.value.place)
+        assertEquals(vm.uiState.value.candidates, restored.uiState.value.candidates)
+        assertEquals(vm.uiState.value.selectedPlaces, restored.uiState.value.selectedPlaces)
+        assertEquals(vm.uiState.value.lastConfirmedDestination, restored.uiState.value.lastConfirmedDestination)
+        assertEquals(vm.uiState.value.stageIndex, restored.uiState.value.stageIndex)
+        assertNull(restored.uiState.value.error)
+    }
+
+    @Test fun `interrupted process snapshot does not replay route and explicit retry keeps pending target`() = runTest {
+        val handle = requestState(); val vm = create(handle); advanceUntilIdle()
         vm.recommendAnother()
-        assertEquals(completed, vm.uiState.value)
+        val saved = snapshot(handle)
+        advanceUntilIdle()
+        val freshPlatform = MockNavigationRepository().apply { start() }
+        val restored = create(saved, platform = freshPlatform); advanceUntilIdle()
+        assertEquals("food-1", restored.uiState.value.place!!.id)
+        assertNull(freshPlatform.state.value.destination)
+        assertTrue(restored.uiState.value.navigationError!!.contains("중단"))
+        restored.retryRoute(); advanceUntilIdle()
+        assertEquals("food-2", restored.uiState.value.place!!.id)
     }
 
-    @Test fun `saved state restores candidate and decisions in new ViewModel`() = runTest {
-        val handle = requestState()
-        val original = create(handle)
-        advanceUntilIdle()
-        choose(original)
-        original.skipPlace()
-        original.recommendAnother()
-        val snapshot = handle.keys().associateWith { handle.get<Any?>(it) }
-        val restoredHandle = SavedStateHandle(snapshot)
-        val restored = create(restoredHandle)
-        advanceUntilIdle()
-        assertEquals(original.uiState.value, restored.uiState.value)
-        choose(restored)
-        val completed = create(SavedStateHandle(restoredHandle.keys().associateWith { restoredHandle.get<Any?>(it) }))
-        advanceUntilIdle()
-        assertTrue(completed.uiState.value.isComplete)
-        assertEquals(restored.uiState.value, completed.uiState.value)
+    @Test fun `saved candidates survive Java serialization used by Android saved state`() = runTest {
+        val handle = requestState(); create(handle); advanceUntilIdle()
+        val bytes = java.io.ByteArrayOutputStream()
+        java.io.ObjectOutputStream(bytes).use { it.writeObject(handle.get<ArrayList<Place>>("recommendations")) }
+        val restored = java.io.ObjectInputStream(java.io.ByteArrayInputStream(bytes.toByteArray())).use { it.readObject() }
+        assertEquals(handle.get<ArrayList<Place>>("recommendations"), restored)
     }
 
-    @Test fun `repository failure supports retry without advancing stage`() = runTest {
+    @Test fun `restricted or unknown UX blocks every route button without changing candidates`() = runTest {
+        val vm = create(); advanceUntilIdle()
+        val before = vm.uiState.value.place
+        listOf(UxAccess.RESTRICTED, UxAccess.UNKNOWN).forEach {
+            ux.simulate(it)
+            vm.selectPlace(); advanceUntilIdle()
+            vm.recommendAnother(); advanceUntilIdle()
+            vm.nextCourse(); advanceUntilIdle()
+            vm.requestRemainingCourse(); advanceUntilIdle()
+            assertEquals(before, vm.uiState.value.place)
+            assertEquals(0, vm.uiState.value.stageIndex)
+            assertNull(navigation.state.value.destination)
+        }
+    }
+
+    @Test fun `failed loading supports retry and incomplete repository response reports error`() = runTest {
         var fail = true
-        val repository = object : RecommendationRepository {
+        val repo = object : RecommendationRepository {
             override suspend fun getRecommendations(request: RecommendationRequest): List<Place> {
                 if (fail) error("offline")
                 return MockRecommendationRepository().getRecommendations(request)
             }
         }
-        val vm = RecommendationViewModel(requestState(), GetRecommendationsUseCase(repository), navigation,
-            RequestNavigationUseCase(navigation, ux), observeLocation)
-        advanceUntilIdle()
+        val vm = create(repository = repo); advanceUntilIdle()
         assertNotNull(vm.uiState.value.error)
-        assertFalse(vm.uiState.value.isLoading)
-        vm.skipPlace()
-        assertEquals(0, vm.uiState.value.stageIndex)
-        fail = false
-        vm.load()
-        advanceUntilIdle()
+        vm.skipPlace(); assertEquals(0, vm.uiState.value.stageIndex)
+        fail = false; vm.load(); advanceUntilIdle()
         assertNull(vm.uiState.value.error)
-        assertNotNull(vm.uiState.value.place)
-    }
-
-    @Test fun `incomplete repository response is an error`() = runTest {
-        val repository = object : RecommendationRepository {
-            override suspend fun getRecommendations(request: RecommendationRequest) = emptyList<Place>()
+        var incomplete = true
+        val partial = object : RecommendationRepository {
+            override suspend fun getRecommendations(request: RecommendationRequest): List<Place> {
+                val all = MockRecommendationRepository().getRecommendations(request)
+                return if (incomplete) all.take(1) else all
+            }
         }
-        val vm = RecommendationViewModel(requestState(), GetRecommendationsUseCase(repository), navigation,
-            RequestNavigationUseCase(navigation, ux), observeLocation)
-        advanceUntilIdle()
-        assertNotNull(vm.uiState.value.error)
-        assertNull(vm.uiState.value.place)
+        val bad = create(repository = partial); advanceUntilIdle()
+        assertNotNull(bad.uiState.value.error)
+        incomplete = false
+        bad.load(); advanceUntilIdle()
+        assertNull(bad.uiState.value.error)
+        assertEquals(3, bad.uiState.value.candidates.size)
     }
 
-    @Test fun `selection needs separate consent and failure never advances`() = runTest {
-        val vm = create()
-        advanceUntilIdle()
-        vm.selectPlace()
-        assertNotNull(vm.uiState.value.destinationConfirmation)
-        assertNull(navigation.state.value.destination)
-        vm.dismissDestination()
-        assertNull(vm.uiState.value.destinationConfirmation)
-        assertTrue(vm.uiState.value.selectedPlaces.isEmpty())
-        navigation.failNextRoute = true
-        choose(vm)
-        assertEquals(0, vm.uiState.value.stageIndex)
-        assertTrue(vm.uiState.value.selectedPlaces.isEmpty())
-        assertNotNull(vm.uiState.value.navigationError)
-        choose(vm)
+    @Test fun `map failure and skipping never change current navigation`() = runTest {
+        val vm = create(); advanceUntilIdle()
+        vm.selectPlace(); advanceUntilIdle()
+        val before = navigation.state.value
+        vm.openMap(); advanceUntilIdle()
+        assertTrue(vm.uiState.value.mapMessage!!.contains("Pleos"))
+        assertFalse(vm.uiState.value.isOpeningMap)
+        vm.skipPlace()
+        assertEquals(before, navigation.state.value)
         assertEquals(1, vm.uiState.value.stageIndex)
-        assertEquals(1, vm.uiState.value.selectedPlaces.size)
-    }
-
-    @Test fun `arrival is delivered to recommendation state without visit completion or auto advance`() = runTest {
-        val vm = create()
-        advanceUntilIdle()
-        choose(vm)
-        val before = vm.uiState.value
-        navigation.simulateArrival()
-        advanceUntilIdle()
-        assertNotNull(vm.uiState.value.arrivalSignal)
-        assertEquals(before.stageIndex, vm.uiState.value.stageIndex)
-        assertEquals(before.selectedPlaces, vm.uiState.value.selectedPlaces)
-        navigation.simulateExternalDestinationChange(null)
-        advanceUntilIdle()
-        assertNull(vm.uiState.value.navigation.destination)
+        assertEquals(listOf("food-1"), vm.uiState.value.skippedPlaces.map { it.id })
     }
 }

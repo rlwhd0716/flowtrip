@@ -76,9 +76,13 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        location.stop()
-        navigation.stop()
-        ux.stop()
+        // A visible split-screen Activity can be paused. Release only when hidden, and
+        // keep application-scoped adapters through configuration recreation.
+        if (!isChangingConfigurations) {
+            location.stop()
+            navigation.stop()
+            ux.stop()
+        }
         super.onStop()
     }
 }

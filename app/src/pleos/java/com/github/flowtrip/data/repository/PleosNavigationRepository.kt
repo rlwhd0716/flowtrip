@@ -2,6 +2,8 @@ package com.github.flowtrip.data.repository
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.util.Log
+import com.github.flowtrip.BuildConfig
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 import ai.pleos.playground.navi.data.*
@@ -34,6 +36,7 @@ class PleosNavigationRepository(
     private var pending: CompletableDeferred<PlatformResult>? = null
     private var confirmation: RouteConfirmation? = null
     private val mutex = Mutex()
+    private fun trace(event: String) { if (BuildConfig.DEBUG) Log.i("FlowTrip.Navi", event) }
 
     override fun start() {
         if (helper != null) return
@@ -52,6 +55,7 @@ class PleosNavigationRepository(
             fun dispatch(block: () -> Unit) { session.launch { if (helper === sdk) block() } }
             val callbacks = object : NaviHelperEventListener {
                 override fun onDestinationInfo(destinationInfo: DestinationInfo) = dispatch {
+                    trace("onDestinationInfo")
                     try {
                         val destination = destinationInfo.toDomain()
                         val changed = state.value.destination != destination
@@ -62,14 +66,25 @@ class PleosNavigationRepository(
                     } catch (_: IllegalArgumentException) { fail("목적지 좌표가 유효하지 않습니다.") }
                 }
                 override fun onRouteStarted(routeStartInfo: RouteStartInfo) = dispatch {
+                    trace("onRouteStarted")
                     mutableState.value = state.value.copy(route = RouteState.SEARCHING, message = "경로 탐색 중")
                 }
                 override fun onRoutingCompleted() = dispatch {
+                    trace("onRoutingCompleted")
                     confirmation?.onRoutingCompleted()
                     // This callback alone is not a verified route to our requested destination.
                     queryDestinationAndRoute()
                 }
+                @Suppress("OVERRIDE_DEPRECATION")
+                override fun onRouteEnded() = dispatch {
+                    // Public legacy completion callback retained in 3.0.5. Older Navi apps
+                    // may emit this instead of the newly introduced onRoutingCompleted.
+                    trace("onRouteEnded (legacy completion)")
+                    confirmation?.onRoutingCompleted()
+                    queryDestinationAndRoute()
+                }
                 override fun onRouteStateInfo(routeStateInfo: RouteStateInfo) = dispatch {
+                    trace("onRouteStateInfo mode=${routeStateInfo.naviMode} routing=${routeStateInfo.isRouting}")
                     val guiding = routeStateInfo.naviMode == NaviMode.ROUTE_GUIDING || routeStateInfo.naviMode == NaviMode.SIMULATION_GUIDING
                     if (pending != null) {
                         confirmation?.onRouteState(routeStateInfo.isRouting, guiding)
@@ -79,13 +94,29 @@ class PleosNavigationRepository(
                             routeStateInfo.isRouting -> RouteState.SEARCHING
                             guiding -> RouteState.GUIDING
                             else -> RouteState.IDLE
-                        }, destination = if (guiding || routeStateInfo.isRouting) state.value.destination else null)
+                        }, destination = if (guiding || routeStateInfo.isRouting) state.value.destination else null,
+                            waypoints = if (guiding || routeStateInfo.isRouting) state.value.waypoints else emptyList())
                     }
                 }
                 override fun onDestinationChanged() = dispatch { queryDestinationAndRoute() }
+                override fun onReRouteEnded() = dispatch { queryDestinationAndRoute() }
+                override fun onWaypointChanged(waypointChangedInfo: WaypointChangedInfo) = dispatch { queryDestinationAndRoute() }
+                override fun onWayPointInfo(waypointInfoList: List<WaypointInfo>) = dispatch {
+                    trace("onWayPointInfo count=${waypointInfoList.size}")
+                    try {
+                        val waypoints = waypointInfoList.map { it.toDomain() }
+                        mutableState.value = state.value.copy(waypoints = waypoints)
+                        confirmation?.onWaypoints(waypoints)
+                        finishIfConfirmed()
+                    } catch (_: IllegalArgumentException) { fail("경유지 좌표가 유효하지 않습니다.") }
+                }
                 override fun onRouteCancelled() = dispatch {
-                    pending?.complete(PlatformResult.Failure("경로 안내가 취소되었습니다."))
-                    mutableState.value = state.value.copy(destination = null, route = RouteState.IDLE, message = "경로 안내 종료")
+                    trace("onRouteCancelled; replacementPending=${pending != null}")
+                    confirmation?.onRouteCancelled()
+                    // Do not treat cancellation of the old guidance as the outcome of
+                    // its replacement. Wait for a verified new route, error or timeout.
+                    mutableState.value = state.value.copy(destination = null, waypoints = emptyList(), route = RouteState.IDLE,
+                        message = if (pending != null) "기존 안내 종료 · 새 경로 결과 확인 중" else "경로 안내 종료")
                     mutableEvents.tryEmit(NavigationEvent.DestinationChanged(null))
                 }
                 override fun onDestinationArrived(destinationArrivedInfo: DestinationArrivedInfo) = dispatch {
@@ -110,6 +141,7 @@ class PleosNavigationRepository(
             sdk.initialize(onConnected = { dispatch {
                 try {
                     sdk.addListener(callbacks)
+                    trace("connected; listener registered")
                     mutableState.value = state.value.copy(service = ServiceStatus.READY, message = "Pleos Navi Service 연결됨")
                     queryDestinationAndRoute()
                     refreshCurrentLocation()
@@ -128,6 +160,7 @@ class PleosNavigationRepository(
         fail("Pleos 내비게이션 권한이 거부되었습니다.")
     }
     private fun fail(message: String) {
+        trace("failure: $message")
         mutableState.value = state.value.copy(route = RouteState.FAILED, message = message)
         mutableEvents.tryEmit(NavigationEvent.Failure(message))
         pending?.complete(PlatformResult.Failure(message))
@@ -138,14 +171,16 @@ class PleosNavigationRepository(
                 mutableState.value = state.value.copy(route = RouteState.GUIDING, message = "승인한 목적지의 경로 안내 확인됨")
                 pending?.complete(PlatformResult.Success)
             }
-            RoutingDecision.REJECTED -> fail("승인한 목적지의 경로 안내를 확인하지 못했습니다.")
             else -> Unit
         }
     }
     private fun queryDestinationAndRoute() {
         if (state.value.service != ServiceStatus.READY) return
         if (!PleosPermissions.granted(context, PleosPermissions.NAVI_ROUTE)) return
-        try { helper?.getDestinationInfo(); helper?.getRouteStateInfo() }
+        try {
+            trace("query destination/route/waypoints")
+            helper?.getDestinationInfo(); helper?.getRouteStateInfo(); helper?.getWaypointInfo()
+        }
         catch (_: SecurityException) { fail("내비게이션 정보 조회 권한이 거부되었습니다.") }
         catch (_: Exception) { fail("내비게이션 정보 조회 실패") }
     }
@@ -176,7 +211,6 @@ class PleosNavigationRepository(
         }
         try {
             sdk.requestNavigationScreen(NavigationScreenRequest.Foreground)
-            sdk.requestNavigationScreen(NavigationScreenRequest.MoveToCurrentLocationOnMap)
             // No screen-display completion callback is provided. Do not claim the screen is visible.
             PlatformResult.Success
         } catch (_: SecurityException) {
@@ -191,28 +225,63 @@ class PleosNavigationRepository(
         catch (_: Exception) { mutableLocation.value = LocationState(DataSource.PLEOS, LocationStatus.ERROR, message = "대체 위치 조회 실패") }
     }
 
-    override suspend fun requestRoute(destination: Destination, userConfirmed: Boolean): PlatformResult = withContext(Dispatchers.Main.immediate) {
+    override suspend fun requestRoute(destination: Destination, userConfirmed: Boolean): PlatformResult =
+        route(destination, emptyList(), userConfirmed)
+
+    override suspend fun requestRouteWithWaypoints(destination: Destination, waypoints: List<Destination>, userConfirmed: Boolean): PlatformResult {
+        if (waypoints.size !in 1..2) return PlatformResult.Failure("NaviHelper 경유지는 1~2곳이어야 합니다.")
+        return route(destination, waypoints, userConfirmed)
+    }
+
+    private suspend fun route(destination: Destination, waypoints: List<Destination>, userConfirmed: Boolean): PlatformResult = withContext(Dispatchers.Main.immediate) {
+        if (mutex.isLocked) return@withContext PlatformResult.Failure("이전 경로 요청 결과를 확인 중입니다.")
         mutex.withLock {
             if (!userConfirmed) return@withLock PlatformResult.Failure("목적지 변경 승인이 필요합니다.")
-            if (destination.source != DataSource.PLEOS) return@withLock PlatformResult.Failure("Mock 장소는 실제 내비게이션으로 전송할 수 없습니다.")
-            if (destination.poiId == null || destination.poiSubId == null) return@withLock PlatformResult.Failure("실제 장소의 POI 식별 정보가 필요합니다.")
+            if (!ux.state.value.allowsInteraction) return@withLock PlatformResult.Failure("차량 UX 제한으로 목적지를 변경할 수 없습니다.")
+            val stops = waypoints + destination
+            if (stops.any { it.source != DataSource.PLEOS }) return@withLock PlatformResult.Failure("Mock 장소는 실제 내비게이션으로 전송할 수 없습니다. 실제 장소 데이터 연동이 필요합니다.")
+            if (stops.any { it.poiId.isNullOrBlank() || it.poiSubId.isNullOrBlank() }) return@withLock PlatformResult.Failure("실제 장소의 POI 식별 정보가 필요합니다.")
             if (state.value.service != ServiceStatus.READY) return@withLock PlatformResult.Failure("Pleos 내비게이션이 준비되지 않았습니다.")
             if (!PleosPermissions.granted(context, PleosPermissions.NAVI_ROUTE_SEARCH)) return@withLock PlatformResult.Failure("경로 탐색 권한이 필요합니다.")
+            if (!PleosPermissions.granted(context, PleosPermissions.NAVI_ROUTE)) return@withLock PlatformResult.Failure("경로 결과를 확인할 내비게이션 정보 조회 권한이 필요합니다.")
             val result = CompletableDeferred<PlatformResult>()
-            confirmation = RouteConfirmation(destination)
+            val routeConfirmation = RouteConfirmation(destination, waypoints)
+            confirmation = routeConfirmation
             pending = result
             mutableState.value = state.value.copy(route = RouteState.SEARCHING, message = "목적지 경로 요청 중")
+            // The three get APIs are asynchronous and their snapshots are not atomic.
+            // A pre-change response can arrive after completion. Keep all positive
+            // checks, but retry reads rather than permanently rejecting one mismatch.
+            val poll = launch {
+                while (isActive && !result.isCompleted) {
+                    delay(1_000)
+                    if (routeConfirmation.hasCompleted) queryDestinationAndRoute()
+                }
+            }
             try {
-                helper!!.requestRoute(RouteInfo(latitude = destination.coordinates.latitude, longitude = destination.coordinates.longitude,
+                val routeInfo = RouteInfo(latitude = destination.coordinates.latitude, longitude = destination.coordinates.longitude,
                     displayLatitude = null, displayLongitude = null, poiName = destination.name,
-                    poiId = destination.poiId, poiSubId = destination.poiSubId, address = destination.address,
-                    poiProvider = destination.poiProvider.orEmpty())) // SDK default provider is the empty string.
-                withTimeoutOrNull(25_000) { result.await() } ?: PlatformResult.Failure("경로 탐색 결과 확인 시간이 초과되었습니다.")
+                    poiId = requireNotNull(destination.poiId), poiSubId = requireNotNull(destination.poiSubId), address = destination.address,
+                    poiProvider = destination.poiProvider.orEmpty())
+                if (waypoints.isEmpty()) helper!!.requestRoute(routeInfo)
+                else helper!!.requestRouteWithWaypoints(RouteWithWaypointsRequest(
+                    destination = routeInfo,
+                    waypoints = waypoints.mapIndexed { index, stop -> RequestWaypointInfo(
+                        latitude = stop.coordinates.latitude, longitude = stop.coordinates.longitude,
+                        poiName = stop.name, waypointIndex = if (index == 0) WaypointIndex.FIRST else WaypointIndex.SECOND,
+                        poiId = requireNotNull(stop.poiId), address = stop.address,
+                        poiSubId = requireNotNull(stop.poiSubId), poiProvider = stop.poiProvider.orEmpty(),
+                    ) },
+                ))
+                trace("route dispatched; waypointCount=${waypoints.size}")
+                withTimeoutOrNull(25_000) { result.await() } ?: PlatformResult.Failure(
+                    "경로 요청은 전달했으나 안내 결과를 확인하지 못했습니다 (${routeConfirmation.waitingReason}). 실제 목적지는 내비게이션 화면에서 확인해 주세요.")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: SecurityException) { PlatformResult.Failure("경로 탐색 권한이 거부되었습니다.") }
             catch (_: Exception) { PlatformResult.Failure("Pleos 경로 요청 실패") }
             finally {
+                poll.cancel()
                 pending = null
                 confirmation = null
                 if (state.value.route == RouteState.SEARCHING) {

@@ -6,7 +6,7 @@ enum class RouteState { IDLE, SEARCHING, GUIDING, ARRIVED, FAILED }
 enum class LocationStatus { UNAVAILABLE, AVAILABLE, STALE, UNSUPPORTED, PERMISSION_DENIED, ERROR }
 enum class UxAccess { UNKNOWN, RESTRICTED, ALLOWED, SIMULATED }
 
-data class Coordinates(val latitude: Double, val longitude: Double) {
+data class Coordinates(val latitude: Double, val longitude: Double) : java.io.Serializable {
     init {
         require(latitude.isFinite() && latitude in -90.0..90.0)
         require(longitude.isFinite() && longitude in -180.0..180.0)
@@ -22,7 +22,7 @@ data class Destination(
     val poiId: String? = null,
     val poiSubId: String? = null,
     val poiProvider: String? = null,
-)
+) : java.io.Serializable
 
 data class LocationInfo(val coordinates: Coordinates, val timestampMillis: Long, val source: DataSource)
 data class LocationState(
@@ -38,6 +38,7 @@ data class NavigationState(
     val route: RouteState = RouteState.IDLE,
     val destination: Destination? = null,
     val message: String? = null,
+    val waypoints: List<Destination> = emptyList(),
 )
 
 sealed interface NavigationEvent {

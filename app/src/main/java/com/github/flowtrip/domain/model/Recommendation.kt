@@ -26,4 +26,4 @@ data class Place(
     val visitMinutes: Int = 40,
     val expectedSpend: String = "정보 없음",
     val parkingSummary: String = "주차 정보 확인 필요",
-)
+) : java.io.Serializable

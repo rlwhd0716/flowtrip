@@ -38,7 +38,7 @@ fun ScreenLayout(title: String, onBack: (() -> Unit)? = null, compact: Boolean =
                 }
                 Text(title, style = MaterialTheme.typography.headlineLarge)
             }
-            Text("정차 중 사용해 주세요 · 현재 추천 장소는 Mock 데이터입니다", style = MaterialTheme.typography.bodyMedium,
+            Text("정차 중 사용해 주세요", style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             content()
         }

@@ -34,6 +34,9 @@ internal object FlowTripPreviewData {
     val recommendation = RecommendationUiState(
         request = RecommendationRequest(TravelMode.DATE, "서울 성수동 (Mock)", 180, "조용한 장소", true),
         place = place,
+        candidates = listOf(place, place.copy(id = "preview-2", name = "온기 키친"), place.copy(id = "preview-3", name = "초록 테이블")),
+        remainingCourse = listOf(place, place.copy(id = "preview-view", name = "달빛 전망길", stage = RecommendationStage.NIGHT_VIEW),
+            place.copy(id = "preview-cafe", name = "느린 오후", stage = RecommendationStage.DESSERT)),
         isLoading = false,
         navigation = NavigationState(DataSource.MOCK, service = ServiceStatus.READY, message = "Mock 내비게이션"),
         location = LocationState(DataSource.MOCK, LocationStatus.AVAILABLE,

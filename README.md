@@ -5,7 +5,13 @@
 일반 Android에서 Mock으로 개발할 때는 `-PpleosSdk=false`를 명시하세요. 추천 장소 데이터는 두 모드 모두 Mock입니다.
 실제 SDK APK의 컴파일은 검증했지만 Pleos 차량 서비스에서의 실행은 아직 미검증입니다. 도착 신호를 방문 완료로 확정하지 않습니다.
 현재 연동 범위와 빌드 방법은 [P0 연동 결과](docs/PLEOS_INTEGRATION.md), 공식 API·권한 조사는 [SDK 조사](docs/PLEOS_SDK_RESEARCH.md),
-진행도와 남은 외부 검증은 [PROGRESS](docs/PROGRESS.md)를 참고하세요.
+현재 분할 화면 구조와 검증/제약은 [분할 화면 변경 보고](docs/SPLIT_SCREEN_INTEGRATION.md), 진행도는 [PROGRESS](docs/PROGRESS.md)를 참고하세요.
+
+FlowTrip은 지도를 그리지 않고 장소 추천과 코스를 제어합니다. Pleos 기본 내비게이션과의 두 창 배치는 시스템 window bar/제스처를 사용합니다. 후보 변경은 경로 결과 확인 후 확정하며, `다음 추천 경로`와 `다음 코스`를 구분합니다. 실제 장소 공급자 및 Pleos 창 유지 검증은 아직 필요합니다.
+
+## 실제 목적지로 안내 시험
+
+추천 화면 상단의 **실제 장소 길안내 테스트**에서 공식 SDK 샘플의 **42dot / 소프트웨어드림센터**를 선택하거나 경유 경로를 요청할 수 있습니다. 기본 Pleos SDK 빌드에서는 실제 내비게이션 목적지를 변경합니다. 추천 코스는 기존 시연 데이터로 유지합니다. 사용법·좌표·POI 출처와 검증 결과는 [실제 안내 테스트](docs/REAL_NAVIGATION_TEST.md)를 참고하세요.
 
 ## Compose Preview
 
@@ -15,7 +21,7 @@ Android Studio에서 아래 파일을 열고 우측 상단의 **Split** 또는 *
 - `HomeScreen.kt`: 홈
 - `TripScreen.kt`: 여행 설정
 - `DateScreen.kt`: 데이트 설정
-- `RecommendationScreen.kt`: 추천, 로딩, 오류, 목적지 승인, 코스 완료
+- `RecommendationScreen.kt`: 추천 패널, 좁은 분할 창, 경로 확인 중/실패, 코스 완료
 
 파일 위치는 `app/src/main/java/com/github/flowtrip/presentation/` 아래의 해당 화면 패키지입니다.
 각 화면은 가로/세로와 밝은/어두운 테마를 제공합니다. Preview는 샘플 상태를 사용하므로 SDK나 에뮬레이터 연결이 필요하지 않습니다.
@@ -69,7 +75,7 @@ com.github.flowtrip/
 │       └── GetRecommendationsUseCase.kt
 ├── data/
 │   ├── model/
-│   │   └── MockPlaceData.kt                # 가상 장소 6개와 domain 변환
+│   │   └── MockPlaceData.kt                # 가상 장소 9개와 domain 변환
 │   └── repository/
 │       └── MockRecommendationRepository.kt
 └── presentation/
@@ -97,8 +103,8 @@ com.github.flowtrip/
 - `app/src/main/res/values/strings.xml`: 앱 이름 `FlowTrip`
 - `app/src/test/java/com/github/flowtrip/MainDispatcherRule.kt`: 코루틴 테스트 디스패처
 - `app/src/test/java/com/github/flowtrip/presentation/FormViewModelTest.kt`: 입력 및 복원 테스트 2개
-- `app/src/test/java/com/github/flowtrip/presentation/recommendation/RecommendationViewModelTest.kt`: 추천 상태 테스트 6개
-- `app/src/androidTest/java/com/github/flowtrip/FlowTripNavigationTest.kt`: 실제 화면 흐름 테스트 2개
+- `app/src/test/java/com/github/flowtrip/presentation/recommendation/RecommendationViewModelTest.kt`: 추천 상태 테스트 13개
+- `app/src/androidTest/java/com/github/flowtrip/FlowTripNavigationTest.kt`: 화면 흐름 테스트 4개 (현재 실행 미검증)
 - `README.md`: 구조, 실행, 검증 및 향후 확장 안내
 
 기존 `ui/theme/Color.kt`, `Theme.kt`, `Type.kt` 템플릿은 `core/designsystem/FlowTripTheme.kt`로 대체했습니다.
@@ -121,40 +127,36 @@ Navigation의 화면 진입점에서 `collectAsStateWithLifecycle()`로 수집�
 
 여행 목적지·시간·취향과 데이트 시간·분위기·새로운 장소 옵션은 각 화면의 `SavedStateHandle`에 저장합니다.
 추천 요청은 URI 인코딩한 Navigation 인수로 전달합니다. ViewModel은 각 back-stack entry에 속하므로 추천 화면에서 뒤로 돌아가도 입력값이 유지됩니다.
-진행 단계, 후보 인덱스, 선택/건너뛴 장소 ID도 `SavedStateHandle`에 저장하고, 복원 시 Repository 응답으로 장소 목록을 재구성합니다.
+진행 단계, 후보 인덱스, 선택/건너뛴 장소 ID, 실제 후보 스냅샷, 안내 방식, 마지막 확인 목적지와 중단 요청 대상을 `SavedStateHandle`에 저장합니다. 복원할 후보가 있으면 Repository에서 새로 생성하지 않으며 경로 변경을 자동 재실행하지 않습니다.
 이는 구성 변경 및 Android의 정상적인 저장 상태 복원을 위한 장치이며, 강제 종료 후 영구 이력 저장 기능은 아닙니다.
 
 ## 화면 흐름
 
 1. Home → 여행 모드 또는 데이트 모드
 2. 여행: 목적지 직접 입력 → 시간/취향 선택 → 코스 추천 시작 (공백 목적지는 시작 불가)
-3. 데이트: 예시 위치 확인 → 시간/분위기/새로운 장소 옵션 → 데이트 시작
+3. 데이트: 수신 위치/위치 상태 확인 → 시간/분위기/새로운 장소 옵션 → 데이트 시작
 4. 공통 추천: 식당 → 야경 명소 → 디저트 카페 → 완료 요약
 
-- **다른 장소 추천**: 현재 단계의 두 후보를 순환합니다. 선택/건너뛰기 이력에는 기록하지 않습니다.
-- **이 장소 선택**: 별도 목적지 승인 창을 표시합니다. 승인 후 경로 확인이 성공해야 선택 이력에 추가하고 다음 추천 단계로 진행합니다. 승인 취소·경로 실패 시 진행하지 않습니다.
-- **건너뛰기**: 현재 장소를 건너뛴 이력에 추가하고 다음 단계로 진행합니다.
-- 마지막 단계 이후에는 선택 장소 요약과 홈 버튼을 표시합니다. 완료 후 추가 진행은 무시합니다.
-- 불러오는 중에는 상태 변경을 무시합니다. Repository 오류나 필수 단계 누락은 재시도 가능한 오류 상태로 표시합니다.
+- **이 장소로 길안내**: 현재 추천의 경로를 요청하며 코스 단계는 유지합니다.
+- **다음 추천 경로**: 현재 단계의 세 후보를 A→B→C→A로 순환하며 즉시 경로를 요청합니다. SDK 결과 확인 후 후보를 확정합니다.
+- **다음 코스**: 다음 단계 첫 후보를 요청하고 성공 시 단계/선택 기록을 확정합니다. 마지막 단계에서는 코스 완료로 표시합니다.
+- **남은 코스 경유 안내**: 화면에 표시한 장소 순서로 경유지와 최종 목적지를 요청합니다.
+- **이 단계 건너뛰기**: 제외 이력에 추가하고 다음 단계를 표시합니다. 기존 안내를 바꾸지 않습니다.
+- 경로 버튼은 별도 확인 창 없이 명시적 목적지 변경 동작으로 처리합니다. 요청 중 중복 동작을 막고, 실패 시 기존 후보/단계를 보존하며 재시도를 제공합니다.
+- 도착 신호는 표시만 하며 자동 코스 진행/방문 완료로 처리하지 않습니다.
+- 마지막 단계 이후에는 선택 요약과 홈 버튼을 표시합니다. 불러오기 오류와 필수 단계 누락은 재시도할 수 있습니다.
 
 추천 장소명·장소 정보·거리·시간은 가상 데이터입니다. 좌표는 성수·서울숲 일대의 예시 위치이며, 실제 장소 POI를 의미하지 않습니다. Mock 목적지는 실제 SDK로 전송하지 않습니다. 두 모드 모두 같은 3단계 예시 코스를 사용합니다.
 설정값은 요청 객체와 추천 이유에 반영되며, 실제 취향별 필터링·시간 최적화·현재 시각에 따른 야경 판정은 수행하지 않습니다.
 
-### 추천 화면의 Pleos 지도
+### Pleos 기본 내비게이션과 두 창 사용
 
-추천 화면의 `Pleos 지도 열기`는 NaviHelper 3.0.5의 `requestNavigationScreen(NavigationScreenRequest.Foreground)`로
-Pleos Connect 내비게이션 화면 표시를 요청합니다. 앱 내부에 지도 타일을 삽입하는 방식이 아닙니다.
-OpenStreetMap·OSRM·Leaflet WebView와 외부 지도/경로 요청은 제거했습니다. 장소 설명·예상 체류·비용·주차 예시 정보는 유지합니다.
+FlowTrip은 자체 지도를 렌더링하지 않습니다. 두 앱의 배치는 Pleos 시스템 window bar/제스처에서 조절합니다. 화면 방향을 고정하지 않고 크기 변경에 대응합니다.
+필요할 때 누르는 `내비게이션 화면 요청`만 `requestNavigationScreen(Foreground)`를 호출하며, 추천 경로 변경에는 화면 호출/앱 복귀 Intent가 없습니다. 화면 요청 성공은 실제 창 배치 완료를 의미하지 않습니다.
 
-- 실제 지도는 `bash gradlew -PpleosSdk=true :app:assembleDebug`로 빌드해 Pleos Connect 에뮬레이터/차량에서 사용합니다.
-- 실제 SDK Manifest에 `pleos.car.permission.NAVI_CUSTOM_MAP`을 추가했습니다. 런타임 권한은 기기에서 dangerous로 정의된 경우 요청합니다.
-- UX 조작 허용·SDK 연결·화면 표시 권한을 확인한 뒤 호출합니다. 화면 표시 요청 전달은 실제 화면 표시 완료를 보장하지 않습니다.
-- 지도 열기는 현재 목적지·경로 및 추천 진행을 변경하지 않습니다. Mock 추천 장소를 실제 내비게이션에 보내지 않습니다.
-- 기본 Mock 빌드에서는 사용 환경 안내와 비활성 버튼을 표시하며 외부 지도로 대체하지 않습니다.
-- Pleos 내비게이션의 실제 화면 전환은 대상 환경에서 검증해야 합니다. 일반 Android 에뮬레이터는 이를 대체하지 않습니다.
+추천 카드의 장소·예상 체류·비용·주차 정보와 두 모드의 기존 설정은 유지합니다. Mock 장소의 실제 전송은 차단하며, 실제 안내에는 장소/POI 공급자 연결이 필요합니다. 주행 중에는 기존 차량 UX gate가 조작을 차단합니다.
 
-근거: [NaviHelper 소개](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/intro),
-[화면 표시 권한](https://document.pleos.ai/en/api-reference/connect-sdk-pleos/NaviHelper/declaring-permissions), 실제 AAR 공개 시그니처 확인.
+실제 분할 창과 연속 경로 변경 시 포커스 유지는 미검증입니다. SDK API, 상태 복원 및 검증 항목은 [최신 변경 보고](docs/SPLIT_SCREEN_INTEGRATION.md)에 정리했습니다.
 
 Material 3 기반으로 밝은/어두운 테마를 지원합니다. 가용 너비 760dp 이상에서는 두 열, 그 미만에서는 한 열로 배치하고 작은 가로 화면에서도 스크롤할 수 있습니다.
 CTA 최소 높이는 64dp, 선택 컨트롤 영역은 56dp입니다. 브랜드 색상과 글꼴 및 모서리는 Theme 파일에서 변경합니다.
@@ -192,10 +194,10 @@ Hilt Gradle 플러그인 2.59.2와 KSP 2.3.6을 사용합니다. AGP 9의 내장
 프로젝트 설정을 수정하지 않고 실행 시에만 아래 옵션을 적용해 Gradle 단위 테스트를 정상 실행했습니다.
 
 ```powershell
-.\gradlew.bat '-Dorg.gradle.jvmargs=-Xmx2048m -Dfile.encoding=MS949' :app:testDebugUnitTest
+.\gradlew.bat '-Dorg.gradle.jvmargs=-Xmx2048m -Dfile.encoding=MS949' -PpleosSdk=false :app:testDebugUnitTest
 ```
 
-검증 결과:
+초기 뼈대/Hilt 전환 당시 검증 이력 (현재 결과는 [최신 보고](docs/SPLIT_SCREEN_INTEGRATION.md) 참조):
 
 - Hilt 전환 후 Debug 빌드·Lint·Gradle 단위 테스트 9개·Android 36.1 계측 테스트 3개 재검증 통과
 - Hilt 검증에는 실제 Application/Activity 진입점, Navigation별 ViewModel 생성, 요청 인수 주입 및 Activity 재생성 시 상태 유지가 포함됨
@@ -220,7 +222,7 @@ UI 테스트는 여행/데이트 진입, 특수문자가 있는 목적지 전달
 - 위치·경로·차량 상태처럼 별도 책임이 생길 때 domain에 해당 계약과 모델을 추가하고, data에서 SDK를 감쌉니다.
 - NaviHelper, FusedLocation, Vehicle, TTS, STT 호출이나 SDK 타입을 Screen/ViewModel에 직접 노출하지 않습니다.
 - 권한, SDK 초기화/해제 및 생명주기, 실제 단위/오류 변환은 SDK 문서에 따라 data 및 앱 시작 계층에서 처리합니다.
-- 주행 중 조작 정책과 제한은 공식 문서와 앱 카테고리 확인 후 구현합니다. 현재 안내 문구는 실제 조작 제한 장치가 아닙니다.
+- 주행 중 조작 정책과 제한은 공식 문서와 앱 카테고리 확인 후 구현합니다. 현재는 CarUxRestrictionsManager와 최상위 UX gate로 주차 허용 상태에서만 조작을 제공합니다. 주행 중 사용 승인은 별도 확인이 필요합니다.
 
-기본 빌드는 Pleos 권한·SDK 없이 실행됩니다. 실제 SDK 옵션은 공식 권한을 별도 Manifest overlay로 추가하고 AAOS UX 제한을 확인합니다.
+기본 빌드는 Pleos SDK를 포함합니다. Mock 개발에는 `-PpleosSdk=false`를 사용합니다. 실제 SDK 옵션은 공식 권한을 별도 Manifest overlay로 추가하고 AAOS UX 제한을 확인합니다.
 DO 및 Maps 앱 카테고리를 임의 선언하지 않았으며 실제 Pleos 차량 탑재·배포 승인은 별도 검증이 필요합니다.

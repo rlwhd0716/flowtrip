@@ -14,4 +14,5 @@ interface NavigationRepository {
     suspend fun openMap(): PlatformResult
     /** Success means routing was confirmed, not simply that the SDK accepted the call. */
     suspend fun requestRoute(destination: Destination, userConfirmed: Boolean): PlatformResult
+    suspend fun requestRouteWithWaypoints(destination: Destination, waypoints: List<Destination>, userConfirmed: Boolean): PlatformResult
 }

@@ -41,4 +41,10 @@ internal val mockPlaces = listOf(
         Coordinates(37.5412, 127.0495), "서울 성동구 서울숲 인근 · 예시 위치", 45, "1인 1~2만원", "인근 유료주차장 이용"),
     MockPlaceData("cafe-2", RecommendationStage.DESSERT, "구름 디저트룸", "작은 케이크와 커피가 있는 아늑한 공간", "오늘의 이야기를 나누며 코스를 마무리해요", 2.2, 7,
         Coordinates(37.5463, 127.0578), "서울 성동구 성수동 · 예시 위치", 40, "1인 1~2만원", "전용 주차장 없음"),
+    MockPlaceData("food-3", RecommendationStage.RESTAURANT, "초록 테이블", "제철 재료로 준비한 편안한 저녁", "함께 나눠 먹기 좋은 메뉴예요", 3.5, 12,
+        Coordinates(37.5490, 127.0520), "서울 성동구 · 예시 위치", 55, "1인 2~3만원", "인근 유료주차장 이용"),
+    MockPlaceData("view-3", RecommendationStage.NIGHT_VIEW, "강빛 산책길", "강변 불빛을 즐기는 짧은 산책 코스", "차분하게 풍경을 감상해 보세요", 4.0, 13,
+        Coordinates(37.5320, 127.0580), "서울 한강변 · 예시 위치", 30, "입장료 없음", "공원 주차장 이용"),
+    MockPlaceData("cafe-3", RecommendationStage.DESSERT, "작은 다과점", "차와 구움과자로 마무리하는 공간", "가볍게 쉬어가기 좋아요", 2.8, 9,
+        Coordinates(37.5420, 127.0590), "서울 성동구 · 예시 위치", 40, "1인 1~2만원", "전용 주차장 없음"),
 )
