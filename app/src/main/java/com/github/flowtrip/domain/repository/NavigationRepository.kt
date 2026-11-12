@@ -10,7 +10,8 @@ interface NavigationRepository {
     fun start()
     fun stop()
     fun refreshDestination()
-    /** Requests the platform navigation screen without changing its destination. Success only means dispatch. */
+    /** Explicit foreground/diagnostic request, NOT split setup. Never call from route controls.
+     * Success only means dispatch. Kept separate from the regular recommendation UI. */
     suspend fun openMap(): PlatformResult
     /** Success means routing was confirmed, not simply that the SDK accepted the call. */
     suspend fun requestRoute(destination: Destination, userConfirmed: Boolean): PlatformResult

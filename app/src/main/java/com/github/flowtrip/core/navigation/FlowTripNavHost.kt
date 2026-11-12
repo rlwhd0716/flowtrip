@@ -1,6 +1,7 @@
 package com.github.flowtrip.core.navigation
 
 import android.net.Uri
+import com.github.flowtrip.BuildConfig
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
@@ -47,7 +48,8 @@ fun FlowTripNavHost(ux: UxState) {
     NavHost(navController = navController, startDestination = Routes.HOME) {
         composable(Routes.HOME) {
             HomeScreen(onTrip = { navController.navigate(Routes.TRIP) { launchSingleTop = true } },
-                onDate = { navController.navigate(Routes.DATE) { launchSingleTop = true } })
+                onDate = { navController.navigate(Routes.DATE) { launchSingleTop = true } },
+                showPleosWindowGuide = BuildConfig.PLEOS_SDK_ENABLED)
         }
         composable(Routes.TRIP) {
             val vm: TripViewModel = hiltViewModel()
@@ -76,7 +78,7 @@ fun FlowTripNavHost(ux: UxState) {
             RecommendationScreen(state, vm::selectPlace, vm::recommendAnother, vm::nextCourse, vm::skipPlace, vm::load,
                 onRetryRoute = vm::retryRoute, onCourseRoute = vm::requestRemainingCourse,
                 onHome = { navController.popBackStack(Routes.HOME, inclusive = false) },
-                onBack = { navController.popBackStack() }, onOpenMap = vm::openMap, onTestRoute = vm::requestTestRoute)
+                onBack = { navController.popBackStack() }, onTestRoute = vm::requestTestRoute)
         }
     }
 }

@@ -13,19 +13,20 @@ import com.github.flowtrip.domain.model.*
 import com.github.flowtrip.presentation.common.AdaptivePanels
 import com.github.flowtrip.presentation.common.ScreenLayout
 import com.github.flowtrip.presentation.common.PlatformStatusCard
+import com.github.flowtrip.presentation.common.PleosWindowGuide
 
 @Composable
 fun RecommendationScreen(
     state: RecommendationUiState, onSelect: () -> Unit, onAnother: () -> Unit,
     onNextCourse: () -> Unit, onSkip: () -> Unit, onRetry: () -> Unit, onRetryRoute: () -> Unit,
-    onCourseRoute: () -> Unit, onHome: () -> Unit, onBack: () -> Unit, onOpenMap: () -> Unit,
+    onCourseRoute: () -> Unit, onHome: () -> Unit, onBack: () -> Unit,
     onTestRoute: (String, Boolean) -> Unit,
 ) {
     val busy = state.isRequestingRoute || state.isOpeningMap
     ScreenLayout(state.request.mode.title, onBack = if (busy) null else onBack, compact = true) {
         Text("${state.request.destination} · ${state.request.availableMinutes}분 · ${state.request.preference}",
             style = MaterialTheme.typography.bodyMedium)
-        NavigationTestPanel(state, onTestRoute, onRetryRoute, onOpenMap)
+        NavigationTestPanel(state, onTestRoute, onRetryRoute)
         when {
             state.isLoading -> CircularProgressIndicator()
             state.error != null -> FlowInfoCard {
@@ -89,13 +90,7 @@ fun RecommendationScreen(
                         }
                         FlowInfoCard {
                             Text("Pleos 내비게이션", style = MaterialTheme.typography.titleMedium)
-                            Text("두 앱의 위치와 크기는 Pleos window bar에서 조절해 주세요.")
-                            OutlinedButton(onClick = onOpenMap,
-                                enabled = !busy && state.navigation.source == DataSource.PLEOS,
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
-                                Text(if (state.isOpeningMap) "화면 요청 중…" else "내비게이션 화면 요청")
-                            }
-                            state.mapMessage?.let { Text(it) }
+                            if (state.navigation.source == DataSource.PLEOS) PleosWindowGuide()
                             if (state.navigation.source == DataSource.MOCK) Text("Mock에서는 경로 변경만 시뮬레이션합니다.")
                         }
                     }
@@ -136,6 +131,6 @@ private fun RecommendationCompletePreview() = RecommendationPreviewContent(FlowT
 private fun RecommendationPreviewContent(state: RecommendationUiState) {
     FlowTripTheme {
         RecommendationScreen(state, onSelect = {}, onAnother = {}, onNextCourse = {}, onSkip = {},
-            onRetry = {}, onRetryRoute = {}, onCourseRoute = {}, onHome = {}, onBack = {}, onOpenMap = {}, onTestRoute = { _, _ -> })
+            onRetry = {}, onRetryRoute = {}, onCourseRoute = {}, onHome = {}, onBack = {}, onTestRoute = { _, _ -> })
     }
 }

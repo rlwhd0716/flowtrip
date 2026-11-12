@@ -1,5 +1,6 @@
 package com.github.flowtrip.presentation.common
 
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -47,8 +49,11 @@ fun ScreenLayout(title: String, onBack: (() -> Unit)? = null, compact: Boolean =
 
 @Composable
 fun AdaptivePanels(first: @Composable () -> Unit, second: @Composable () -> Unit) {
+    // A Pleos portrait half-window can still exceed 760dp. Keep its controls
+    // in one column; use two panels only in a genuinely expanded landscape window.
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        if (maxWidth >= 760.dp) {
+        if (maxWidth >= 760.dp && landscape) {
             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 Column(Modifier.weight(1f)) { first() }
                 Column(Modifier.weight(1f)) { second() }

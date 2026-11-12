@@ -17,7 +17,7 @@
 - `다음 코스`: 현재 단계를 완료하고 다음 단계 첫 후보의 경로를 요청한다. 경로 확인 후 단계와 기록을 확정한다. 마지막 단계에서는 `코스 완료`이며 내비게이션 안내를 취소하지 않는다.
 - `남은 코스 경유 안내`: 현재 후보→이후 각 단계 첫 후보 순서로 경유지와 최종 목적지를 요청한다. 이후 후보 변경·다음 코스에서도 이 방식을 유지한다. 요청 전에 화면에 순서를 안내한다.
 - `이 단계 건너뛰기`: 기존 제외 기능을 유지한다. 추천 단계만 이동하며 현재 안내를 변경하지 않는다.
-- `내비게이션 화면 요청`: 사용자가 필요할 때만 `Foreground`를 요청한다. **경로 버튼에서는 이 API, Activity 재실행, FlowTrip 복귀 Intent를 호출하지 않는다.**
+- **2026-11-13 수정:** Foreground 화면 요청 버튼을 일반 추천/테스트 UI에서 제거했다. `분할 화면 구성 방법`은 앱 내부 안내만 표시한다. 경로 버튼은 화면 실행/복귀 없이 목적지만 요청한다. 공개 NaviHelper 3.0.5로 자동 두 앱 배치를 보장하지 않는다.
 
 요청 중 현재 카드를 유지하고 조작을 잠근다. SDK 요청 반환만으로 성공으로 보지 않는다. 탐색 완료 후 목적지·경유지 목록/순서·안내 모드를 확인해야 후보/단계가 확정된다. 실패/시간 초과 시 기존 카드와 기록을 보존하고 요청 대상을 재시도할 수 있다. 플랫폼이 이미 경로를 바꿨을 가능성이 있으므로 자동으로 이전 경로를 재전송하거나 안내가 유지된다고 주장하지 않는다. 실제 수신 목적지와 경로 상태를 표시하고 불일치 안내 및 재조회를 수행한다.
 
@@ -30,7 +30,7 @@
 | 목적 | API/콜백 |
 | --- | --- |
 | 연결 | `initialize`, `addListener`, `removeListener`, `release` |
-| 화면 요청 | `requestNavigationScreen(NavigationScreenRequest.Foreground)` |
+| 진단용 화면 요청 (일반 UI에서 제거) | `requestNavigationScreen(NavigationScreenRequest.Foreground)` — 분할 생성 API가 아님 |
 | 목적지 설정/교체 | `requestRoute(RouteInfo)` |
 | 경유 코스 | `requestRouteWithWaypoints(RouteWithWaypointsRequest(destination, waypoints))` |
 | 경유지 타입 | `RequestWaypointInfo`, `WaypointIndex.FIRST/SECOND` (최대 2곳으로 제한) |
@@ -45,7 +45,7 @@
 
 [공식 앱 구조](https://document.pleos.ai/docs/pleos-only/vehicle-app-planning-guide/app-structure-screen-model)는 앱 영역의 최대 2개 window, 화면 방향/크기 변경, 기본 방향 미지정 시 한 window 사용을 설명한다. [Window Policy](https://document.pleos.ai/docs/connect/guide/docs-design/getting-started/window)는 Connect-S/Connect-W별 배치 차이, 사용자 window bar/제스처, App-to-App 실행이 기존 창을 덮을 수 있음을 설명한다.
 
-이 정책에 맞춰 `resizeableActivity=true`, 방향 고정 없음, 단일 기존 Activity를 사용한다. 다른 앱의 창을 강제로 배치하거나 비율을 지정하지 않는다. `launchAdjacent`, 숨겨진 API, 오버레이 권한, adb 기반 시스템 설정 변경을 사용하지 않는다. 한 창에서는 핵심 추천/버튼을 세로 배치하고, 충분히 넓으면 부가 정보를 옆에 표시한다. 이는 **FlowTrip 내부 반응형 구성**이며 Pleos 두 앱 분할을 흉내내는 화면이 아니다.
+이 정책에 맞춰 `resizeableActivity=true`, 단일 기존 Activity를 사용한다. 2026-11-13에 portrait 초기 요청을 검토했으나 실제 두 앱 배치를 보장하지 않아 남기지 않았다. Activity 방향은 고정하지 않고, 최초 두 앱 배치는 시스템 창 메뉴로 구성한다. 세로 창은 너비가 커도 한 열로 배치하며, 넓은 가로 창에서만 두 열을 사용한다. 다른 앱의 창을 강제로 배치하거나 비율을 지정하지 않는다. `launchAdjacent`, 숨겨진 API, 오버레이 권한, adb 기반 시스템 설정 변경을 사용하지 않는다. 한 창에서는 핵심 추천/버튼을 세로 배치하고, 충분히 넓으면 부가 정보를 옆에 표시한다. 이는 **FlowTrip 내부 반응형 구성**이며 Pleos 두 앱 분할을 흉내내는 화면이 아니다.
 
 가시 상태인 split Activity가 `onPause`되어도 연결을 해제하지 않는다. 설정 변경에 의한 재생성에서도 application-scoped Adapter와 ViewModel의 요청을 유지한다. 실제 `onStop` 백그라운드에서는 리스너를 해제하며 복귀 시 연결/목적지/경로/경유지를 재조회한다. 이때 처리 중이던 요청은 중단될 수 있으며 실패 상태와 명시적 재시도를 제공한다.
 
@@ -88,7 +88,7 @@ MS949는 이 PC의 한글 사용자 경로에서 Gradle test worker를 실행하
 6. 탐색 중 창 크기 변경, 회전, 백그라운드/복귀, Activity 재생성, 시스템 프로세스 재생성 후 후보·안내 불일치가 없는지 확인한다.
 7. 차량 UX 상태 UNKNOWN/제한/허용과 앱 카테고리 심사를 확인한다. 제한을 에뮬레이터/시스템 권한 우회로 풀지 않는다.
 
-**사용자 완료 기준 3(실제 두 앱 동시 표시)과 6(연속 요청 중 불필요한 화면 전환 없음)은 미검증이며 완료 처리하지 않는다.** 4/5의 실제 차량 경로 요청 역시 실제 장소 공급자 연결 전에는 미완료이다. 지원 여부가 확인되지 않은 자동 분할 대체 기능은 제공하지 않는다.
+**2026-11-13 AVD 2.1.0에서 기준 3(실제 두 앱 동시 표시)은 시스템 창 바 드래그로 검증했다. 기준 6(연속 요청 중 불필요한 화면 전환 없음)의 SDK 경로 완료까지는 미검증이다.** 4/5의 실제 차량 경로 요청 역시 실제 장소 공급자 연결 전에는 미완료이다. 지원 여부가 확인되지 않은 자동 분할 대체 기능은 제공하지 않는다.
 
 공식 경로 참고: [목적지 설정/교체](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/destinations), [경유지 경로](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/route-with-waypoints), [콜백](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/event-listeners).
 
@@ -123,3 +123,15 @@ MS949는 이 PC의 한글 사용자 경로에서 Gradle test worker를 실행하
 - 수정: `docs/PLEOS_INTEGRATION.md`
 - 수정: `docs/PROGRESS.md`
 - 신규: `docs/SPLIT_SCREEN_INTEGRATION.md`
+
+
+## 2026-11-13 실제 창 배치 검증
+
+- FlowTrip 오른쪽 가장자리 점 3개 창 바를 왼쪽으로 드래그해 전체 앱 영역을 한 창으로 줄였다. Pleos 시스템이 다른 창에 기본 내비게이션을 표시했다.
+- FlowTrip: Rect(853,90-1694,1300), OEM Navi: Rect(1718,90-2559,1300). 두 앱 모두 reportedDrawn/reportedVisible/allDrawn=true. 실제 화면에서도 홈→데이트 설정→추천 화면과 OEM 내비가 나란히 유지됐다.
+- 자체 강제 배치/API 추가 없이 시스템의 정상 창 조절 UI를 사용했다. 최초 배치는 시스템에서 구성하며 NaviHelper는 목적지 요청만 담당한다.
+- 최종 SDK 빌드/Lint 통과, Mock 단위 테스트 38개 통과 및 UI 테스트 컴파일 통과. 설치 APK 해시 일치 확인. 경로 완료 및 A→B→C 안내는 별도 검증 항목이다.
+
+### 실제 목적지 요청 결과
+
+분할 창에서 42dot → 소프트웨어드림센터 → 42dot을 요청했다. 세 요청 모두 내비 목적지/TBT가 변경되는 동안 FlowTrip과 OEM 내비의 두 창이 유지됐다. 소프트웨어드림센터는 앱에서 SDK 안내 성공 메시지까지 확인했다. 42dot은 안내 UI가 표시돼도 앱의 목적지 일치 확인이 대기/시간 초과하여 성공 확정하지 않았다. 성공 조건을 낮추거나 후보를 무조건 확정하지 않았다. 따라서 두 창 유지 POC는 검증했지만 모든 후보/경유지/도착 이벤트의 완전한 성공은 아직 미검증이다. OEM 내비 지도 타일은 빈 배경으로 남아 있으며 FlowTrip 자체 지도 렌더링으로 대체하지 않았다.

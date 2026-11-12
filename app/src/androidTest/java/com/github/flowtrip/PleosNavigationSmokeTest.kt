@@ -23,6 +23,26 @@ import org.junit.Test
 
 /** Explicit opt-in only. Sends real routes on a Pleos emulator; never runs on a vehicle. */
 class PleosNavigationSmokeTest {
+    @Test
+    @androidx.test.filters.SdkSuppress(minSdkVersion = 30)
+    fun printLastAnrMainThread() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("readAnr") == "true")
+        assumeTrue(Build.MODEL.contains("emulator", ignoreCase = true))
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val manager = context.getSystemService(android.app.ActivityManager::class.java)
+        val exits = manager.getHistoricalProcessExitReasons(context.packageName, 0, 5)
+        val anr = exits.firstOrNull { it.reason == android.app.ApplicationExitInfo.REASON_ANR }
+        val trace = anr?.traceInputStream?.bufferedReader()?.use { it.readText() }
+        val main = trace?.substringAfter("\"main\"", missingDelimiterValue = "")?.substringBefore("\n\n")
+        val managedStack = main?.lineSequence()?.filterNot {
+            it.trimStart().startsWith("native:") || it.trimStart().startsWith("kernel:")
+        }?.joinToString("\n")
+        instrumentation.sendStatus(0, Bundle().apply {
+            putString("stream", "\nOwn app ANR: ${anr?.description}\nmain thread:\n${managedStack?.take(6000) ?: "trace unavailable"}\n")
+        })
+    }
+
     @Test fun officialDestinationsReachGuidingState() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("runRealNavigation") == "true")
         assumeTrue(BuildConfig.PLEOS_SDK_ENABLED)

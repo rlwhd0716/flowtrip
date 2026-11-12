@@ -18,7 +18,7 @@ import com.github.flowtrip.domain.model.DataSource
 
 @Composable
 internal fun NavigationTestPanel(state: RecommendationUiState, onRequest: (String, Boolean) -> Unit,
-    onRetry: () -> Unit, onOpenMap: () -> Unit) {
+    onRetry: () -> Unit) {
     if (state.testDestinations.isEmpty()) return
     var expanded by rememberSaveable { mutableStateOf(false) }
     val busy = state.isRequestingRoute || state.isOpeningMap
@@ -47,10 +47,7 @@ internal fun NavigationTestPanel(state: RecommendationUiState, onRequest: (Strin
             OutlinedButton(onClick = onRetry, enabled = !busy,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) { Text("테스트 경로 다시 시도") }
         }
-        OutlinedButton(onClick = onOpenMap, enabled = !busy && state.navigation.source == DataSource.PLEOS,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) { Text("테스트 내비게이션 화면 요청") }
-        state.mapMessage?.let { Text(it) }
-        Text("창 배치는 Pleos window bar에서 조절해 주세요. 현재 지도에서의 장소 유효성은 경로 결과로 확인합니다.",
+        Text("Pleos 창 메뉴에서 내비게이션과 FlowTrip을 나란히 배치해 주세요. 이 버튼들은 목적지만 요청합니다.",
             style = MaterialTheme.typography.bodySmall)
     }
 }

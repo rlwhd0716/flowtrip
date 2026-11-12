@@ -9,7 +9,7 @@
 3. 상단 **실제 장소 길안내 테스트**를 펼친다.
 4. **42dot 길안내** 또는 **소프트웨어드림센터 길안내**를 누른다. 이 동작은 실제 목적지를 바꾼다. 식당·야경·카페 추천은 바꾸지 않는다.
 5. 경유지 시험은 **소프트웨어드림센터 경유 → 42dot**을 누른다.
-6. 내비게이션이 보이지 않을 때만 **테스트 내비게이션 화면 요청**을 누른다. 두 앱 배치는 Pleos window bar에서 조절한다. 목적지 변경 버튼 자체는 화면 실행/복귀 Intent를 호출하지 않는다.
+6. 먼저 시스템 앱 목록과 창 바/창 메뉴로 내비게이션과 FlowTrip을 두 창에 배치한다. 앱 안의 **분할 화면 구성 방법**은 안내만 표시하며 다른 앱을 실행하지 않는다. 2026-11-13부터 Foreground 화면 요청 버튼은 추천/테스트 UI에서 제거했다. 목적지 변경 버튼은 경로만 요청한다.
 7. 성공 문구와 하단 현재 목적지·경유지·경로 상태를 확인한다. 성공은 SDK의 탐색 완료, 일치하는 목적지/경유지 및 안내 모드를 대조한 결과이다. 실제 지도 화면 및 TBT/음성 동작도 직접 확인해야 한다.
 
 Mock 빌드에서는 같은 버튼이 Mock 내비게이션에서만 시뮬레이션된다. 실제 안내는 제공하지 않는다. 주행 중 UX 제한을 해제하는 기능은 추가하지 않았다.
@@ -65,3 +65,10 @@ C:/src/androidSDK/platform-tools/adb.exe -s emulator-5554 shell am instrument -w
 - 신규: `app/src/androidTest/java/com/github/flowtrip/PleosNavigationSmokeTest.kt`
 - 수정: `app/src/test/java/com/github/flowtrip/presentation/recommendation/RecommendationViewModelTest.kt`, `platform/RouteConfirmationTest.kt`
 - 문서: `README.md`, `docs/PROGRESS.md`, `docs/SPLIT_SCREEN_INTEGRATION.md`, 신규 `docs/REAL_NAVIGATION_TEST.md`
+
+
+### 2026-11-13 분할 화면 실기 확인
+
+Pleos AVD 2.1.0에서 앱 오른쪽 가장자리 점 3개 창 바를 왼쪽으로 드래그하면 FlowTrip과 기본 내비게이션이 나란히 표시됨을 확인했다. FlowTrip 내 분할 구성 안내도 이 조작을 설명한다. 최초 배치는 시스템 창 바로 구성하며, 추천/테스트 화면에서 내비게이션을 Foreground로 여는 버튼은 제거했다.
+
+분할 상태에서 42dot → 소프트웨어드림센터를 요청해 두 창 유지 및 내비 목적지 변경을 확인했고, 소프트웨어드림센터는 SDK 안내 성공 메시지까지 확인했다. 최초 42dot 요청은 목적지 일치 확인 시간 초과가 발생했으므로 모든 경로 요청 성공으로 보고하지 않는다. OEM 내비의 지도 타일 배경은 빈 상태로 남아 있다.

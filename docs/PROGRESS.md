@@ -216,3 +216,46 @@ bash gradlew -PpleosSdk=true :app:assembleDebug :app:testDebugUnitTest :app:lint
 - 최신 앱 APK의 기기/로컬 SHA-256 일치 확인: e87555282c7577b0e6f9888059f0ad8428da6cb9cd867783de72780c0215c12e. 설치 클라이언트 시간 초과와 별개로 최신 앱은 설치 완료됨.
 - 최신 계측 APK 해시는 불일치하여 새 계측 테스트를 실행하지 않음. 실제 UI 버튼 검증으로 전환하려 했으나 사용자의 물리 Escape 입력으로 Computer Use가 중지됨.
 - 실제 화면 검증을 즉시 중단하고 이번 작업에서 시작한 SDK 로그 수집 프로세스만 정리함. 최종 SDK 안내 성공/연속 목적지 변경은 미완료로 유지.
+
+## 2026-11-13 분할 UX 불일치 수정
+- 사용자 보고: 내비게이션과 FlowTrip이 동시에 보이지 않고 내비 화면으로 이동한 뒤 FlowTrip에 복귀해야 함.
+- 분석: 리사이즈 허용은 두 앱 배치 구현이 아님. 일반/실제 장소 테스트 화면에 남아 있던 화면 요청 버튼이 requestNavigationScreen(Foreground)을 호출하여 앱 전환을 유도함. 경로 버튼 자체는 기존부터 이 API를 호출하지 않음.
+- 공식 앱 구조/Window Policy 및 NaviHelper 3.0.5 AAR 대조: portrait는 한 앱 window, 배치는 시스템 창 바/창 메뉴가 담당. 공개 NaviHelper에 자동 두 앱 배치 API는 확인되지 않음.
+- 수정: Pleos 전용 manifest overlay에 portrait 초기 창 요청 명시(일반 Mock/폰 설정은 그대로). 추천/테스트 화면의 Foreground 버튼 및 UI 콜백 제거. 홈/추천에 다른 앱을 열지 않는 시스템 분할 구성 안내 추가.
+- 목적지/후보/코스 요청과 추천 상태 관리는 유지. SDK foreground 요청 계약은 진단용으로 분리되어 남아 있으나 일반 추천 UI에서는 호출 경로 없음.
+- 예정 검증: Mock 단위 테스트/계측 APK 컴파일, 실제 SDK 빌드/Lint 및 manifest 병합 확인. AVD의 실제 두 앱 동시 표시/목적지 변경 시 창 유지 검증은 아직 완료 전.
+- 2026-11-13: 수정 전 AVD는 FlowTrip/Navi 모두 같은 앱 영역 Rect(853,90-2535,1300), FlowTrip만 visible=true/Navi=false로 확인됨. Android multi-window 플래그만으로 두 앱 동시 표시를 판단할 수 없음을 실증함.
+- Pleos/Mock 빌드와 Mock 단위 테스트 38개 및 UI 테스트 컴파일 통과, Pleos Lint 오류 없음. portrait 선호 설정 병합 확인 및 수정 APK 기기 해시 일치.
+- portrait 실행 후 표시 플래그 일부는 바뀌었지만 앱 UI가 실제 표시되지 않고 ANR 발생. 이를 분할 성공으로 간주하지 않음.
+- 공개 ApplicationExitInfo API로 우리 앱의 ANR 메인 스택을 조회하는 opt-in 진단 추가. 실제 정지 위치는 android.os.ServiceManager.checkService → ClipboardManager 생성 → AndroidComposeView → MainActivity.setContent. NaviHelper 경로 API/지도 UI를 원인으로 단정하지 않음.
+- AVD 시스템의 clipboard 서비스 조회 정지를 우회하지 않고 일반 재부팅 후 재검증 예정. 데이터 wipe, 시스템 서비스 대체, adb root/강제 task 배치는 사용하지 않음.
+- AVD 정상 재부팅 완료, clipboard 서비스 존재 확인 후 재실행했으나 초기 draw/창 전환 안정성 검증이 아직 완료되지 않음.
+- 검토했던 고정 portrait 선언은 두 앱 배치를 보장하지 못하고 방향/크기 대응을 제한할 수 있어 최종 코드에서 제거함. 일반/실제 Activity 방향 고정 없음 유지. 미검증 설정을 자동 분할 해결책으로 남기지 않음.
+- 최종 방향: 시스템 창 메뉴로 최초 두 앱 배치를 구성하고, 앱은 화면 전환 버튼 없이 목적지만 요청. 세로 창 한 열/넓은 가로 창 두 열 적응 및 앱 내부 분할 구성 안내 유지.
+
+- 최종 방향 고정 제거 후 Pleos assembleDebug/lintDebug 재확인 BUILD SUCCESSFUL. 최종 APK 로컬/AVD 설치 SHA-256 일치 확인. 정상 런처 실행 후 실제 홈 UI 표시 확인(가로 전체 앱 영역).
+- 시스템 앱 목록과 창 바가 표시되는 것은 확인했으나 두 앱 동시 분할 및 목적지 변경 중 창 유지 검증은 아직 완료하지 않음. Android multi-window 플래그만으로 완료 판단하지 않음.
+
+- 실제 분할 POC 성공: Pleos AVD 2.1.0에서 FlowTrip 오른쪽 점 3개 창 바를 왼쪽으로 드래그. FlowTrip Rect(853,90-1694,1300), OEM Navi Rect(1718,90-2559,1300)로 겹치지 않는 두 앱 창 확인. 둘 다 reportedDrawn/reportedVisible/allDrawn=true, 실제 화면에 홈과 내비 동시 표시 확인. 별도 강제 배치 API/adb task resize 사용 없음.
+
+- 분할 창에서 실제 공식 목적지 42dot 요청: OEM 내비 42dot TBT/안내 종료 화면과 FlowTrip 동시 표시 유지. 단 최초 요청은 앱의 목적지 일치 확인 제한 시간 초과로 성공 확정하지 않음.
+- 이어 소프트웨어드림센터 요청: 동일 두 창에서 OEM 내비 목적지 변경 및 FlowTrip의 “안내 상태를 SDK에서 확인했습니다” 성공 메시지 확인. 화면 전환/FlowTrip 복귀/Foreground 요청 없이 진행됨. 지도 타일 배경은 AVD에서 계속 빈 상태로 관찰됨.
+
+- 소프트웨어드림센터 → 42dot 재변경도 OEM TBT 목적지 변경 및 분할 창 유지 확인. 42dot의 SDK 목적지 일치 판정은 대기하여 완전 성공으로 처리하지 않음. 3요청 모두 불필요한 Foreground/앱 복귀 없이 진행.
+- 실제 확인한 점 3개 창 바 드래그 조작을 인앱 안내에 명시하고 Pleos assembleDebug/lintDebug 다시 통과. 최종 문구 반영 APK 업데이트 중.
+
+- 최종 안내문 반영 APK도 AVD 설치 SHA-256 일치 확인. 정상 런처 재실행 완료. 최종 검증: SDK assembleDebug/lintDebug 성공, Mock 단위 38개 통과, UI 테스트 컴파일 통과, diff --check 통과.
+
+- 최종 문구 반영 APK 업데이트로 시스템 앱 배치가 다시 전체 내비 창으로 바뀜. 이후 정상 실행 재시도는 am start -W에서 timeout(17.4초)로 최종 재시작 UI/재배치를 확정하지 못함. 업데이트 전 실제 두 창/연속 목적지 변경 POC 결과와 구분한다. 최초 배치 및 패키지 업데이트 후 재배치는 시스템 창 바에서 필요할 수 있음. AVD 초기화/재시작 안정성은 남은 검증 항목이며 자동 두 앱 배치 완료라고 보고하지 않음.
+
+## 다음 요청에서 우선 진행: 길안내 버튼으로 자동 분할 요청
+
+- 사용자 요청(2026-11-13): 점 3개 창 바를 직접 드래그하는 방식 대신, **‘이 장소로 길안내’ 버튼을 누르면 FlowTrip과 Pleos 기본 내비게이션이 자동으로 나란히 표시되고 경로 안내가 시작되는 UX**로 수정한다. 이번 턴은 기록만 하며 실제 수정은 다음 요청에서 진행한다.
+- 정정: NaviHelper에 전용 분할 API가 확인되지 않았다는 이유만으로 자동 분할이 불가능하거나 수동 드래그가 필수라고 단정하지 않는다. Android 공개 API `FLAG_ACTIVITY_LAUNCH_ADJACENT | FLAG_ACTIVITY_NEW_TASK`를 이용한 인접 창 실행 가능성을 우선 검증한다. 현재 이 방식은 **미구현·Pleos 실기 미검증**이다.
+- 검토 근거: https://developer.android.com/develop/ui/views/layout/support-multi-window-mode — Android 12L(API 32) 이상에서 전체 화면 앱의 인접 창 실행/분할 진입 요청을 지원한다. Pleos의 자체 창 정책이 이를 반영하는지는 별도 확인이 필요하다: https://document.pleos.ai/docs/connect/guide/docs-design/getting-started/window
+- 다음 구현 순서: (1) 현재 코드/SDK와 내비게이션의 공개 실행 진입점을 확인한다. (2) FlowTrip 버튼 클릭에서 공개 Intent 플래그로 내비 인접 창 실행을 요청하는 POC를 만든다. (3) NaviHelper로 선택 목적지를 요청한다. (4) 이미 두 창이 구성된 뒤 다음 추천/다음 코스 요청에서는 내비 재실행 없이 목적지만 변경한다.
+- 최초 실행 및 기존 내비 실행 중인 경우 모두 확인한다. 실제 화면에 두 앱이 동시에 그려지고 창 영역이 겹치지 않는지, 버튼 클릭 한 번으로 경로 요청이 되는지, 연속 목적지 변경 중 두 창이 유지되는지 검증한다. `isInMultiWindowMode`만으로 성공 처리하지 않는다.
+- 기존 추천·데이트·코스 로직과 중복 요청 방지, SDK 결과 확인 후 후보 확정, 실패/재시도 처리는 유지한다. 분할 실행은 화면 코드와 SDK 경로 요청 로직의 결합을 최소화해 분리한다.
+- 공개 인접 창 실행 요청은 강제 창 위치/비율 조정과 구분한다. 숨겨진 API, 시스템 권한 우회, adb 강제 task 배치, 오버레이, 임의의 미지원 SDK API는 사용하지 않는다. Pleos에서 요청이 무시되거나 기존 앱을 덮으면 자동 분할 성공으로 보고하지 않고 실제 제약을 기록한다.
+- 자동 분할 검증 전에는 현재 수동 구성 안내를 자동 분할 완료로 바꾸지 않는다. 성공 검증 후 안내/UI를 새 버튼 흐름에 맞춰 수정한다.
+- 별도 남은 문제: 42dot은 OEM 안내 UI가 표시돼도 SDK 목적지 대조 시간 초과가 있었음. 소프트웨어드림센터는 SDK 안내 성공 확인. OEM 지도 타일 빈 배경 및 최종 APK 업데이트 후 앱 재실행 시간 초과는 별도 확인 필요.

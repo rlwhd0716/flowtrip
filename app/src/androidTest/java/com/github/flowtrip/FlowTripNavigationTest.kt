@@ -20,7 +20,8 @@ class FlowTripNavigationTest {
     }
     @Test fun mockStandaloneHasControlPanelWithoutMapAndCyclesThreeCandidates() {
         dateStart()
-        compose.onNodeWithText("내비게이션 화면 요청").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("내비게이션 화면 요청").assertDoesNotExist()
+        compose.onNodeWithText("테스트 내비게이션 화면 요청").assertDoesNotExist()
         listOf("온기 키친", "초록 테이블", "골목의 작은 식탁").forEach {
             compose.onNodeWithText("다음 추천 경로").performScrollTo().performClick()
             waitFor(it)
