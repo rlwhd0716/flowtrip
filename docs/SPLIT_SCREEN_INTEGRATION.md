@@ -1,4 +1,6 @@
-# Pleos 분할 화면 연동 변경 보고
+﻿# Pleos 분할 화면 연동 변경 보고
+
+> 최신 결정: 자동 1:1 배치 실험을 제거하고 추천/코스 중심으로 화면을 정리했습니다. 현재 적용 상태와 확인 항목은 [SCREEN_CLEANUP.md](SCREEN_CLEANUP.md)를 따릅니다. 아래는 과거 변경/검증 이력입니다.
 
 기준: 2026-11-11. 추가: 별도 실제 목적지 테스트 2곳은 [실제 안내 테스트](REAL_NAVIGATION_TEST.md)를 참고한다. 추천 코스가 여전히 Mock인 것과 별개로 공식 샘플 목적지를 실제 SDK에 전송하는 기능을 추가했다. 이 문서는 이전 내장 지도 검토와 P0 결과보다 우선하는 현재 구현 설명이다.
 
@@ -45,7 +47,7 @@
 
 [공식 앱 구조](https://document.pleos.ai/docs/pleos-only/vehicle-app-planning-guide/app-structure-screen-model)는 앱 영역의 최대 2개 window, 화면 방향/크기 변경, 기본 방향 미지정 시 한 window 사용을 설명한다. [Window Policy](https://document.pleos.ai/docs/connect/guide/docs-design/getting-started/window)는 Connect-S/Connect-W별 배치 차이, 사용자 window bar/제스처, App-to-App 실행이 기존 창을 덮을 수 있음을 설명한다.
 
-이 정책에 맞춰 `resizeableActivity=true`, 단일 기존 Activity를 사용한다. 2026-11-13에 portrait 초기 요청을 검토했으나 실제 두 앱 배치를 보장하지 않아 남기지 않았다. Activity 방향은 고정하지 않고, 최초 두 앱 배치는 시스템 창 메뉴로 구성한다. 세로 창은 너비가 커도 한 열로 배치하며, 넓은 가로 창에서만 두 열을 사용한다. 다른 앱의 창을 강제로 배치하거나 비율을 지정하지 않는다. `launchAdjacent`, 숨겨진 API, 오버레이 권한, adb 기반 시스템 설정 변경을 사용하지 않는다. 한 창에서는 핵심 추천/버튼을 세로 배치하고, 충분히 넓으면 부가 정보를 옆에 표시한다. 이는 **FlowTrip 내부 반응형 구성**이며 Pleos 두 앱 분할을 흉내내는 화면이 아니다.
+이 정책에 맞춰 `resizeableActivity=true`, 단일 기존 Activity를 사용한다. 2026-11-13에 portrait 초기 요청을 검토했으나 실제 두 앱 배치를 보장하지 않아 남기지 않았다. Activity 방향은 고정하지 않는다. 초기 수동 POC에서는 시스템 창 메뉴를 사용했고, 최신 추가 구현에서는 공개 `LAUNCH_ADJACENT | NEW_TASK`로 인접 창 실행을 요청한다(실제 Pleos 자동 배치 미검증). 세로 창은 너비가 커도 한 열로 배치하며, 넓은 가로 창에서만 두 열을 사용한다. 다른 앱의 창을 강제로 배치하거나 비율을 지정하지 않는다. 숨겨진 API, 오버레이 권한, adb 기반 시스템 설정 변경을 사용하지 않는다. 한 창에서는 핵심 추천/버튼을 세로 배치하고, 충분히 넓으면 부가 정보를 옆에 표시한다. 이는 **FlowTrip 내부 반응형 구성**이며 Pleos 두 앱 분할을 흉내내는 화면이 아니다.
 
 가시 상태인 split Activity가 `onPause`되어도 연결을 해제하지 않는다. 설정 변경에 의한 재생성에서도 application-scoped Adapter와 ViewModel의 요청을 유지한다. 실제 `onStop` 백그라운드에서는 리스너를 해제하며 복귀 시 연결/목적지/경로/경유지를 재조회한다. 이때 처리 중이던 요청은 중단될 수 있으며 실패 상태와 명시적 재시도를 제공한다.
 
@@ -135,3 +137,4 @@ MS949는 이 PC의 한글 사용자 경로에서 Gradle test worker를 실행하
 ### 실제 목적지 요청 결과
 
 분할 창에서 42dot → 소프트웨어드림센터 → 42dot을 요청했다. 세 요청 모두 내비 목적지/TBT가 변경되는 동안 FlowTrip과 OEM 내비의 두 창이 유지됐다. 소프트웨어드림센터는 앱에서 SDK 안내 성공 메시지까지 확인했다. 42dot은 안내 UI가 표시돼도 앱의 목적지 일치 확인이 대기/시간 초과하여 성공 확정하지 않았다. 성공 조건을 낮추거나 후보를 무조건 확정하지 않았다. 따라서 두 창 유지 POC는 검증했지만 모든 후보/경유지/도착 이벤트의 완전한 성공은 아직 미검증이다. OEM 내비 지도 타일은 빈 배경으로 남아 있으며 FlowTrip 자체 지도 렌더링으로 대체하지 않았다.
+

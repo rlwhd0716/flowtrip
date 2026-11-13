@@ -1,45 +1,28 @@
 package com.github.flowtrip.presentation.common.preview
 
-import com.github.flowtrip.domain.model.Coordinates
-import com.github.flowtrip.domain.model.DataSource
-import com.github.flowtrip.domain.model.Destination
-import com.github.flowtrip.domain.model.LocationInfo
-import com.github.flowtrip.domain.model.LocationState
-import com.github.flowtrip.domain.model.LocationStatus
-import com.github.flowtrip.domain.model.NavigationState
-import com.github.flowtrip.domain.model.Place
-import com.github.flowtrip.domain.model.RecommendationRequest
-import com.github.flowtrip.domain.model.RecommendationStage
-import com.github.flowtrip.domain.model.ServiceStatus
-import com.github.flowtrip.domain.model.TravelMode
+import com.github.flowtrip.data.model.MockRecommendationDataSource
+import com.github.flowtrip.data.repository.OfficialNavigationTestCatalog
+import com.github.flowtrip.domain.model.*
 import com.github.flowtrip.presentation.recommendation.RecommendationUiState
 
-/** Static design fixtures: no ViewModel, Hilt, SDK, network, or location subscriptions. */
+/** Bundled preview fixtures only: no SDK, network, location or ViewModel subscriptions. */
 internal object FlowTripPreviewData {
-    private val coordinates = Coordinates(37.5445, 127.0557)
-    val place = Place(
-        id = "preview-restaurant",
-        stage = RecommendationStage.RESTAURANT,
-        name = "골목의 작은 식탁",
-        description = "계절 메뉴를 나누며 여유롭게 식사하는 작은 레스토랑",
-        reason = "새로운 식당에서 코스를 시작해 보세요. 조용히 대화하기 좋은 공간이에요.",
-        distanceKm = 2.4,
-        travelMinutes = 8,
-        destination = Destination("preview-restaurant", "골목의 작은 식탁", coordinates, DataSource.MOCK,
-            address = "서울 성수동 · 미리보기용 예시 주소"),
-        visitMinutes = 60,
-        expectedSpend = "1인 약 2~3만 원",
-        parkingSummary = "인근 공영주차장 이용 · 예시 정보",
-    )
-    val recommendation = RecommendationUiState(
-        request = RecommendationRequest(TravelMode.DATE, "서울 성수동 (Mock)", 180, "조용한 장소", true),
-        place = place,
-        candidates = listOf(place, place.copy(id = "preview-2", name = "온기 키친"), place.copy(id = "preview-3", name = "초록 테이블")),
-        remainingCourse = listOf(place, place.copy(id = "preview-view", name = "달빛 전망길", stage = RecommendationStage.NIGHT_VIEW),
-            place.copy(id = "preview-cafe", name = "느린 오후", stage = RecommendationStage.DESSERT)),
-        isLoading = false,
-        navigation = NavigationState(DataSource.MOCK, service = ServiceStatus.READY, message = "Mock 내비게이션"),
-        location = LocationState(DataSource.MOCK, LocationStatus.AVAILABLE,
-            LocationInfo(coordinates, 1L, DataSource.MOCK)),
-    )
+    private val targets = OfficialNavigationTestCatalog().destinations
+    private fun places(mode: TravelMode) = MockRecommendationDataSource.places
+        .filter { it.stage in mode.stages }.map { place ->
+            place.copy(destination = targets.find { it.id == place.demoRoute.destinationId })
+        }
+    val place = places(TravelMode.DATE).first()
+    private fun recommendation(mode: TravelMode): RecommendationUiState {
+        val all = places(mode)
+        return RecommendationUiState(
+            request = RecommendationRequest(mode, "예시 여행 지역", 180, "조용한 장소", true),
+            place = all.first(), candidates = all.filter { it.stage == mode.stages.first() },
+            remainingCourse = mode.stages.map { stage -> all.first { it.stage == stage } },
+            isLoading = false,
+            navigation = NavigationState(DataSource.MOCK, service = ServiceStatus.READY),
+        )
+    }
+    val recommendation = recommendation(TravelMode.DATE)
+    val tripRecommendation = recommendation(TravelMode.TRIP)
 }

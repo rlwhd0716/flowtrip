@@ -1,10 +1,10 @@
 package com.github.flowtrip.core.navigation
 
 import android.net.Uri
-import com.github.flowtrip.BuildConfig
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.material3.Text
 import com.github.flowtrip.domain.model.UxState
@@ -17,9 +17,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.github.flowtrip.domain.model.RecommendationRequest
+import com.github.flowtrip.domain.model.TravelMode
 import com.github.flowtrip.presentation.date.DateScreen
 import com.github.flowtrip.presentation.date.DateViewModel
 import com.github.flowtrip.presentation.home.HomeScreen
+import com.github.flowtrip.presentation.home.HomeViewModel
 import com.github.flowtrip.presentation.recommendation.RecommendationScreen
 import com.github.flowtrip.presentation.recommendation.RecommendationViewModel
 import com.github.flowtrip.presentation.trip.TripScreen
@@ -29,11 +31,11 @@ private object Routes {
     const val HOME = "home"
     const val TRIP = "trip"
     const val DATE = "date"
-    const val RECOMMENDATION = "recommendation/{mode}?destination={destination}&minutes={minutes}&preference={preference}&newPlaces={newPlaces}"
+    const val RECOMMENDATION = "recommendation/{mode}?destination={destination}&minutes={minutes}&preference={preference}&newPlaces={newPlaces}&place={place}"
 
-    fun recommendation(request: RecommendationRequest) =
+    fun recommendation(request: RecommendationRequest, placeId: String = "") =
         "recommendation/${request.mode.name}?destination=${Uri.encode(request.destination)}" +
-            "&minutes=${request.availableMinutes}&preference=${Uri.encode(request.preference)}&newPlaces=${request.preferNewPlaces}"
+            "&minutes=${request.availableMinutes}&preference=${Uri.encode(request.preference)}&newPlaces=${request.preferNewPlaces}&place=${Uri.encode(placeId)}"
 }
 
 @Composable
@@ -47,14 +49,20 @@ fun FlowTripNavHost(ux: UxState) {
     }
     NavHost(navController = navController, startDestination = Routes.HOME) {
         composable(Routes.HOME) {
+            val vm: HomeViewModel = hiltViewModel()
+            val state by vm.uiState.collectAsStateWithLifecycle()
             HomeScreen(onTrip = { navController.navigate(Routes.TRIP) { launchSingleTop = true } },
                 onDate = { navController.navigate(Routes.DATE) { launchSingleTop = true } },
-                showPleosWindowGuide = BuildConfig.PLEOS_SDK_ENABLED)
+                state = state, onReuse = { place ->
+                    val mode = TravelMode.entries.first { place.stage in it.stages }
+                    val request = RecommendationRequest(mode, "이전 선택 장소 주변", 120, "다시 이용하기")
+                    navController.navigate(Routes.recommendation(request, place.id)) { launchSingleTop = true }
+                })
         }
         composable(Routes.TRIP) {
             val vm: TripViewModel = hiltViewModel()
             val state by vm.uiState.collectAsStateWithLifecycle()
-            TripScreen(state, vm::setDestination, vm::setTime, vm::setPreference,
+            TripScreen(state, vm::selectProvince, vm::selectDistrict, vm::setTime, vm::setTimeUnit, vm::togglePreference,
                 onStart = { vm.createRequest()?.let { request ->
                     navController.navigate(Routes.recommendation(request)) { launchSingleTop = true }
                 } }, onBack = { navController.popBackStack() })
@@ -62,7 +70,7 @@ fun FlowTripNavHost(ux: UxState) {
         composable(Routes.DATE) {
             val vm: DateViewModel = hiltViewModel()
             val state by vm.uiState.collectAsStateWithLifecycle()
-            DateScreen(state, vm::setTime, vm::setMood, vm::setPreferNewPlaces,
+            DateScreen(state, vm::setTime, vm::setTimeUnit, vm::toggleMood, vm::togglePlaceType, vm::setPreferNewPlaces,
                 onStart = { navController.navigate(Routes.recommendation(vm.createRequest())) { launchSingleTop = true } },
                 onBack = { navController.popBackStack() })
         }
@@ -72,13 +80,21 @@ fun FlowTripNavHost(ux: UxState) {
             navArgument("minutes") { type = NavType.IntType },
             navArgument("preference") { type = NavType.StringType },
             navArgument("newPlaces") { type = NavType.BoolType },
+            navArgument("place") { type = NavType.StringType; defaultValue = "" },
         )) {
             val vm: RecommendationViewModel = hiltViewModel()
             val state by vm.uiState.collectAsStateWithLifecycle()
-            RecommendationScreen(state, vm::selectPlace, vm::recommendAnother, vm::nextCourse, vm::skipPlace, vm::load,
-                onRetryRoute = vm::retryRoute, onCourseRoute = vm::requestRemainingCourse,
+            val homeEntry = remember(navController) { navController.getBackStackEntry(Routes.HOME) }
+            val homeVm: HomeViewModel = hiltViewModel(homeEntry)
+            LaunchedEffect(state.selectedPlaces) { homeVm.recordSelections(state.selectedPlaces) }
+            RecommendationScreen(state,
+                onSelect = vm::selectPlace,
+                onAnother = vm::recommendAnother,
+                onNextCourse = vm::nextCourse, onRetry = vm::load,
+                onRetryRoute = vm::retryRoute,
                 onHome = { navController.popBackStack(Routes.HOME, inclusive = false) },
-                onBack = { navController.popBackStack() }, onTestRoute = vm::requestTestRoute)
+                onBack = { navController.popBackStack() },
+                onCandidate = vm::chooseCandidate, onMode = vm::switchMode, onRestart = vm::restartCourse)
         }
     }
 }
