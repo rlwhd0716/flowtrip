@@ -239,8 +239,10 @@ class PleosNavigationRepository(
             if (!userConfirmed) return@withLock PlatformResult.Failure("목적지 변경 승인이 필요합니다.")
             if (!ux.state.value.allowsInteraction) return@withLock PlatformResult.Failure("차량 UX 제한으로 목적지를 변경할 수 없습니다.")
             val stops = waypoints + destination
-            if (stops.any { it.source != DataSource.PLEOS }) return@withLock PlatformResult.Failure("Mock 장소는 실제 내비게이션으로 전송할 수 없습니다. 실제 장소 데이터 연동이 필요합니다.")
-            if (stops.any { it.poiId.isNullOrBlank() || it.poiSubId.isNullOrBlank() }) return@withLock PlatformResult.Failure("실제 장소의 POI 식별 정보가 필요합니다.")
+            if (stops.any { it.source == DataSource.MOCK }) return@withLock PlatformResult.Failure("Mock 장소는 실제 내비게이션으로 전송할 수 없습니다. 실제 장소 데이터 연동이 필요합니다.")
+            if (stops.any { it.source == DataSource.KAKAO } && !BuildConfig.PLEOS_COORDINATE_ROUTING)
+                return@withLock PlatformResult.Failure("외부 좌표 길안내는 현재 SDK/차량에서 미검증입니다. Pleos POI 변환 또는 좌표 요청 지원 확인이 필요합니다. 샘플 목적지로 대체하지 않습니다.")
+            if (stops.any { it.source == DataSource.PLEOS && (it.poiId.isNullOrBlank() || it.poiSubId.isNullOrBlank()) }) return@withLock PlatformResult.Failure("실제 장소의 POI 식별 정보가 필요합니다.")
             if (state.value.service != ServiceStatus.READY) return@withLock PlatformResult.Failure("Pleos 내비게이션이 준비되지 않았습니다.")
             if (!PleosPermissions.granted(context, PleosPermissions.NAVI_ROUTE_SEARCH)) return@withLock PlatformResult.Failure("경로 탐색 권한이 필요합니다.")
             if (!PleosPermissions.granted(context, PleosPermissions.NAVI_ROUTE)) return@withLock PlatformResult.Failure("경로 결과를 확인할 내비게이션 정보 조회 권한이 필요합니다.")
@@ -261,7 +263,7 @@ class PleosNavigationRepository(
             try {
                 val routeInfo = RouteInfo(latitude = destination.coordinates.latitude, longitude = destination.coordinates.longitude,
                     displayLatitude = null, displayLongitude = null, poiName = destination.name,
-                    poiId = requireNotNull(destination.poiId), poiSubId = requireNotNull(destination.poiSubId), address = destination.address,
+                    poiId = destination.poiId.orEmpty(), poiSubId = destination.poiSubId.orEmpty(), address = destination.address,
                     poiProvider = destination.poiProvider.orEmpty())
                 if (waypoints.isEmpty()) helper!!.requestRoute(routeInfo)
                 else helper!!.requestRouteWithWaypoints(RouteWithWaypointsRequest(
@@ -269,8 +271,8 @@ class PleosNavigationRepository(
                     waypoints = waypoints.mapIndexed { index, stop -> RequestWaypointInfo(
                         latitude = stop.coordinates.latitude, longitude = stop.coordinates.longitude,
                         poiName = stop.name, waypointIndex = if (index == 0) WaypointIndex.FIRST else WaypointIndex.SECOND,
-                        poiId = requireNotNull(stop.poiId), address = stop.address,
-                        poiSubId = requireNotNull(stop.poiSubId), poiProvider = stop.poiProvider.orEmpty(),
+                        poiId = stop.poiId.orEmpty(), address = stop.address,
+                        poiSubId = stop.poiSubId.orEmpty(), poiProvider = stop.poiProvider.orEmpty(),
                     ) },
                 ))
                 trace("route dispatched; waypointCount=${waypoints.size}")

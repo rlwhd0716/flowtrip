@@ -29,6 +29,90 @@ class RecommendationViewModelTest {
     )
     private fun snapshot(saved: SavedStateHandle) = SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
 
+    @Test fun `real search failure preserves location reason and still displays remaining time`() = runTest {
+        val real = object : RecommendationRepository {
+            override val usesRealPlaces = true
+            override suspend fun getRecommendations(request: RecommendationRequest): List<Place> =
+                error("현재 차량 위치가 국내 장소 검색 범위 밖입니다.")
+        }
+        val vm = create(repository = real); advanceUntilIdle()
+        assertTrue(vm.uiState.value.error!!.contains("국내 장소 검색 범위 밖"))
+        assertEquals(180, vm.uiState.value.remainingMinutes)
+        assertTrue(vm.uiState.value.candidates.isEmpty())
+        assertNull(navigation.state.value.destination)
+    }
+
+    @Test fun `changing data source discards mock course snapshots and does not claim mock selections as visits`() = runTest {
+        val saved = handle()
+        val mock = create(saved); advanceUntilIdle()
+        mock.nextCourse(); mock.chooseCandidate(2)
+        val real = object : RecommendationRepository {
+            override val usesRealPlaces = true
+            override suspend fun getRecommendations(request: RecommendationRequest) =
+                MockRecommendationRepository().getRecommendations(request).map { it.copy(provider = DataSource.KAKAO) }
+        }
+        val migrated = create(snapshot(saved), real); advanceUntilIdle()
+        assertEquals(0, migrated.uiState.value.stageIndex)
+        assertEquals(0, migrated.uiState.value.candidateIndex)
+        assertTrue(migrated.uiState.value.selectedPlaces.isEmpty())
+        assertTrue(migrated.uiState.value.candidates.all { it.provider == DataSource.KAKAO })
+        assertNull(navigation.state.value.destination)
+    }
+
+    @Test fun `real next course records explicit visit and refreshes with elapsed time and exclusions`() = runTest {
+        val requests = mutableListOf<RecommendationRequest>()
+        val visits = mutableListOf<Place>()
+        val real = object : RecommendationRepository {
+            override val usesRealPlaces = true
+            override fun recordVisit(place: Place) { visits.add(place) }
+            override suspend fun getRecommendations(request: RecommendationRequest): List<Place> {
+                requests.add(request)
+                return MockRecommendationRepository().getRecommendations(request).map { it.copy(provider = DataSource.KAKAO) }
+                    .filter { it.id !in request.excludedIds }
+            }
+        }
+        val saved = handle().apply { set("startedAt", System.currentTimeMillis() - 121_000L); set("realPlaces", true) }
+        val vm = create(saved, real); advanceUntilIdle()
+        val first = vm.uiState.value.place!!
+        assertTrue(vm.uiState.value.realPlaces)
+        assertTrue(requests.first().remainingMinutes!! in 177..178)
+        assertTrue(visits.isEmpty())
+        navigation.simulateArrival(); advanceUntilIdle()
+        assertTrue(visits.isEmpty())
+        assertEquals(0, vm.uiState.value.stageIndex)
+        vm.nextCourse(); advanceUntilIdle()
+        assertEquals(listOf(first), visits)
+        assertEquals(listOf(first), vm.uiState.value.selectedPlaces)
+        assertEquals(1, requests.last().startStage)
+        assertTrue(first.id in requests.last().excludedIds)
+        assertNull(navigation.state.value.destination)
+        val restored = create(snapshot(saved), real); advanceUntilIdle()
+        assertEquals(vm.uiState.value.place, restored.uiState.value.place)
+        assertEquals(2, requests.size)
+        assertEquals(1, visits.size)
+    }
+
+    @Test fun `real next recommendation excludes shown candidates and empty response never falls back to mock`() = runTest {
+        val requests = mutableListOf<RecommendationRequest>()
+        val real = object : RecommendationRepository {
+            override val usesRealPlaces = true
+            override suspend fun getRecommendations(request: RecommendationRequest): List<Place> {
+                requests.add(request)
+                return MockRecommendationRepository().getRecommendations(request).filter { it.id !in request.excludedIds }
+            }
+        }
+        val vm = create(repository = real); advanceUntilIdle()
+        val shown = vm.uiState.value.candidates.map { it.id }.toSet()
+        vm.recommendAnother(); advanceUntilIdle()
+        assertTrue(requests.last().excludedIds.containsAll(shown))
+        assertNotNull(vm.uiState.value.error)
+        assertTrue(vm.uiState.value.selectedPlaces.isEmpty())
+        assertNull(navigation.state.value.destination)
+        vm.load(); advanceUntilIdle()
+        assertEquals(3, requests.size)
+        assertNotNull(vm.uiState.value.error)
+    }
+
     @Test fun `browsing all modes stages and candidates never sends a route`() = runTest {
         val vm = create(); advanceUntilIdle()
         for (mode in TravelMode.entries) {

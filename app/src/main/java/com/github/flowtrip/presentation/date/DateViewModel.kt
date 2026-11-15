@@ -75,7 +75,8 @@ class DateViewModel @Inject constructor(
     fun setPreferNewPlaces(value: Boolean) = update(_uiState.value.copy(preferNewPlaces = value))
     fun createRequest() = _uiState.value.let {
         RecommendationRequest(TravelMode.DATE, if (it.locationSource == DataSource.MOCK) "서울 성수동 (Mock)" else "현재 위치 주변",
-            it.availableMinutes, "${it.mood} · ${it.placeTypes.joinToString(" · ").ifBlank { "장소 유형 무관" }}", it.preferNewPlaces)
+            it.availableMinutes, "${it.mood} · ${it.placeTypes.joinToString(" · ").ifBlank { "장소 유형 무관" }}", it.preferNewPlaces,
+            dayInput = it.timeUnit == AvailableTimeUnit.DAYS)
     }
     private fun update(state: DateUiState) {
         savedState["minutes"] = state.availableMinutes

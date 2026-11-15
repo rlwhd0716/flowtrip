@@ -9,6 +9,8 @@ import com.github.flowtrip.domain.repository.NavigationTestCatalog
 import com.github.flowtrip.domain.usecase.GetRecommendationsUseCase
 import com.github.flowtrip.domain.usecase.RequestNavigationUseCase
 import com.github.flowtrip.domain.usecase.ObserveLocationUseCase
+import com.github.flowtrip.domain.usecase.RecommendationRules
+import com.github.flowtrip.domain.usecase.isFresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -42,13 +44,15 @@ data class RecommendationUiState(
     val testDestinations: List<Destination> = emptyList(),
     val testRouteMessage: String? = null,
     val isTestRouteRetry: Boolean = false,
+    val realPlaces: Boolean = false,
+    val remainingMinutes: Int? = null,
 ) {
     val isComplete: Boolean get() = stageIndex >= request.mode.stages.size
     val navigationDiffers: Boolean get() {
         val target = place?.destination ?: return false
         val active = listOfNotNull(navigation.destination) + navigation.waypoints
         return navigation.route != RouteState.SEARCHING && active.isNotEmpty() && active.none {
-            it.source == target.source &&
+            (it.source == target.source || (it.source == DataSource.PLEOS && target.source == DataSource.KAKAO)) &&
                 kotlin.math.abs(it.coordinates.latitude - target.coordinates.latitude) < 0.0001 &&
                 kotlin.math.abs(it.coordinates.longitude - target.coordinates.longitude) < 0.0001
         }
@@ -70,17 +74,20 @@ class RecommendationViewModel @Inject constructor(
         availableMinutes = requireNotNull(savedState.get<Int>("minutes")),
         preference = requireNotNull(savedState.get<String>("preference")),
         preferNewPlaces = requireNotNull(savedState.get<Boolean>("newPlaces")),
+        dayInput = savedState["dayInput"] ?: false,
     )
+    private val sourceChanged = (savedState.get<Boolean>("realPlaces") ?: false) != getRecommendations.usesRealPlaces
     // Reject legacy snapshots containing fictional coordinates or date-only travel courses.
-    private var places = if (savedState.get<Int>("courseSchema") == 2)
+    private var places = if (savedState.get<Int>("courseSchema") == 2 &&
+        !sourceChanged)
         savedState.get<ArrayList<Place>>("recommendations")?.toList().orEmpty() else emptyList()
-    private var stageIndex: Int = (savedState["stageIndex"] ?: 0).coerceIn(0, request.mode.stages.size)
-    private var candidateIndex: Int = savedState["candidateIndex"] ?: 0
-    private var courseRoute: Boolean = savedState["courseRoute"] ?: false
-    private val selectedIds = (savedState.get<ArrayList<String>>("selectedIds") ?: arrayListOf()).toMutableList()
-    private val skippedIds = (savedState.get<ArrayList<String>>("skippedIds") ?: arrayListOf()).toMutableList()
+    private var stageIndex: Int = if (sourceChanged) 0 else (savedState["stageIndex"] ?: 0).coerceIn(0, request.mode.stages.size)
+    private var candidateIndex: Int = if (sourceChanged) 0 else savedState["candidateIndex"] ?: 0
+    private var courseRoute: Boolean = !sourceChanged && (savedState["courseRoute"] ?: false)
+    private val selectedIds = (if (sourceChanged) emptyList() else savedState.get<ArrayList<String>>("selectedIds").orEmpty()).toMutableList()
+    private val skippedIds = (if (sourceChanged) emptyList() else savedState.get<ArrayList<String>>("skippedIds").orEmpty()).toMutableList()
     private val _uiState = MutableStateFlow(RecommendationUiState(
-        request = request, navigation = navigationRepository.state.value,
+        request = request, navigation = navigationRepository.state.value, realPlaces = getRecommendations.usesRealPlaces,
         testDestinations = testCatalog.destinations,
         testRouteMessage = savedState["testRouteMessage"],
         isTestRouteRetry = savedState.get<String>("retryTestId") != null,
@@ -92,8 +99,24 @@ class RecommendationViewModel @Inject constructor(
     ))
     val uiState = _uiState.asStateFlow()
     private var loadStarted = false
+    private var startedAt: Long = (if (sourceChanged) null else savedState.get<Long>("startedAt"))
+        ?: System.currentTimeMillis().also { savedState["startedAt"] = it }
+    private val recommendedIds = (if (sourceChanged) emptyList() else savedState.get<ArrayList<String>>("recommendedIds").orEmpty()).toMutableSet()
+    private fun remainingMinutes() = RecommendationRules.remaining(
+        RecommendationRules.activityBudget(request.availableMinutes, request.dayInput), startedAt, System.currentTimeMillis())
 
     init {
+        if (sourceChanged) {
+            savedState.remove<ArrayList<Place>>("recommendations")
+            TravelMode.entries.forEach { savedState.remove<CourseSnapshot>("course_" + it.name) }
+            savedState["stageIndex"] = 0
+            savedState["candidateIndex"] = 0
+            savedState["selectedIds"] = arrayListOf<String>()
+            savedState["skippedIds"] = arrayListOf<String>()
+            savedState["recommendedIds"] = arrayListOf<String>()
+            savedState["courseRoute"] = false
+        }
+        savedState["realPlaces"] = getRecommendations.usesRealPlaces
         savedState["routePending"] = false // Never replay a destination change after process death.
         load()
         viewModelScope.launch {
@@ -120,12 +143,18 @@ class RecommendationViewModel @Inject constructor(
     fun load() {
         if (_uiState.value.isLoading && loadStarted) return
         if (_uiState.value.isRequestingRoute) return
+        if (getRecommendations.usesRealPlaces && _uiState.value.error != null && places.isNotEmpty()) {
+            refreshRealCandidates(); return
+        }
         loadStarted = true
-        _uiState.update { it.copy(isLoading = true, error = null) }
+        _uiState.update { it.copy(isLoading = true, error = null,
+            remainingMinutes = if (getRecommendations.usesRealPlaces) remainingMinutes() else null) }
         viewModelScope.launch {
             try {
                 if (places.isEmpty()) {
-                    val result = getRecommendations(request)
+                    val result = getRecommendations(request.copy(startStage = stageIndex,
+                        remainingMinutes = if (getRecommendations.usesRealPlaces) remainingMinutes() else null,
+                        excludedIds = selectedIds.toSet() + skippedIds.toSet() + recommendedIds))
                     places = request.mode.stages.flatMap { stage -> result.filter { it.stage == stage }.take(3) }
                     // Home reuse selects a detail only. It never dispatches a route.
                     if (savedState.get<Int>("courseSchema") != 2) {
@@ -135,14 +164,16 @@ class RecommendationViewModel @Inject constructor(
                         }
                     }
                 }
-                check(request.mode.stages.all { stage -> places.any { it.stage == stage } })
+                if (getRecommendations.usesRealPlaces) check(isStageAvailable()) { "남은 시간과 검색 조건에 맞는 장소가 없습니다. 조건을 변경해 주세요." }
+                else check(request.mode.stages.all { stage -> places.any { it.stage == stage } })
                 saveAndPublish()
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) {
+            catch (error: Exception) {
                 // An incomplete response must not become a permanent cached failure on retry.
                 places = emptyList()
                 savedState.remove<ArrayList<Place>>("recommendations")
-                _uiState.update { it.copy(isLoading = false, error = "추천 장소를 불러오지 못했어요. 다시 시도해 주세요.") }
+                _uiState.update { it.copy(isLoading = false, error = if (getRecommendations.usesRealPlaces)
+                    error.message ?: "실제 장소 검색에 실패했습니다." else "추천 장소를 불러오지 못했어요. 다시 시도해 주세요.") }
             }
         }
     }
@@ -158,7 +189,30 @@ class RecommendationViewModel @Inject constructor(
     }
     fun recommendAnother() {
         if (!canAct()) return
+        if (getRecommendations.usesRealPlaces) { refreshRealCandidates(excludeShown = true); return }
         chooseCandidate((candidateIndex + 1) % candidates(stageIndex).size)
+    }
+
+    private fun isStageAvailable() = stageIndex >= request.mode.stages.size || candidates(stageIndex).isNotEmpty()
+
+    /** Refresh only the active stage. Keep visited snapshots and never dispatch guidance while browsing. */
+    private fun refreshRealCandidates(excludeShown: Boolean = false) {
+        if (excludeShown) recommendedIds.addAll(candidates(stageIndex).map { it.id })
+        savedState["recommendedIds"] = ArrayList(recommendedIds)
+        clearRetry()
+        _uiState.update { it.copy(isLoading = true, error = null, arrivalSignal = null, remainingMinutes = remainingMinutes()) }
+        viewModelScope.launch {
+            try {
+                val result = getRecommendations(request.copy(startStage = stageIndex, remainingMinutes = remainingMinutes(),
+                    excludedIds = selectedIds.toSet() + skippedIds.toSet() + recommendedIds))
+                val current = result.filter { it.stage == request.mode.stages.getOrNull(stageIndex) }.take(3)
+                check(current.isNotEmpty()) { "남은 시간·현재 위치 조건에 맞는 새 장소가 없습니다. 조건을 변경하거나 새 코스를 시작해 주세요." }
+                places = places.filter { it.stage in request.mode.stages.take(stageIndex) } + result
+                candidateIndex = 0
+                saveAndPublish()
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { _uiState.update { it.copy(isLoading = false, error = error.message ?: "실제 장소 검색 실패") } }
+        }
     }
 
     fun switchMode(mode: TravelMode) {
@@ -185,6 +239,8 @@ class RecommendationViewModel @Inject constructor(
         if (_uiState.value.isLoading || _uiState.value.isRequestingRoute || _uiState.value.isOpeningMap) return
         places = emptyList(); stageIndex = 0; candidateIndex = 0
         selectedIds.clear(); skippedIds.clear(); courseRoute = false
+        recommendedIds.clear(); savedState["recommendedIds"] = arrayListOf<String>()
+        startedAt = System.currentTimeMillis(); savedState["startedAt"] = startedAt
         clearRetry()
         _uiState.update { it.copy(testRouteMessage = null, arrivalSignal = null) }
         saveAndPublish()
@@ -243,23 +299,27 @@ class RecommendationViewModel @Inject constructor(
 
     fun nextCourse() {
         if (!canAct()) return
-        _uiState.value.place?.let { selectedIds.add(it.id) }
+        if (getRecommendations.usesRealPlaces) recommendedIds.addAll(candidates(stageIndex).map { it.id })
+        _uiState.value.place?.let { selectedIds.add(it.id); getRecommendations.recordVisit(it) }
         stageIndex++
         candidateIndex = 0
         clearRetry()
         _uiState.update { it.copy(arrivalSignal = null, testRouteMessage = null) }
         saveAndPublish()
+        if (getRecommendations.usesRealPlaces && !_uiState.value.isComplete) refreshRealCandidates()
     }
 
     // Retain the existing ability to omit a stage without claiming to change navigation.
     fun skipPlace() {
         if (!canAct()) return
+        if (getRecommendations.usesRealPlaces) recommendedIds.addAll(candidates(stageIndex).map { it.id })
         _uiState.value.place?.let { skippedIds.add(it.id) }
         stageIndex++
         candidateIndex = 0
         clearRetry()
         _uiState.update { it.copy(arrivalSignal = null) }
         saveAndPublish()
+        if (getRecommendations.usesRealPlaces && !_uiState.value.isComplete) refreshRealCandidates()
     }
 
     private fun changeRoute(targetStage: Int, targetIndex: Int, entireCourse: Boolean) {
@@ -272,6 +332,22 @@ class RecommendationViewModel @Inject constructor(
         if (destinations.size != stops.size) {
             _uiState.update { it.copy(navigationError = "이 코스에 검증된 목적지 좌표가 없는 장소가 있습니다.") }
             return
+        }
+        if (getRecommendations.usesRealPlaces) {
+            val location = _uiState.value.location
+            val fix = location.location?.takeIf { location.status == LocationStatus.AVAILABLE && it.isFresh(System.currentTimeMillis()) }
+            val estimates = if (fix != null) {
+                var origin = fix.coordinates
+                stops.sumOf { stop ->
+                    val estimate = RecommendationRules.rank(listOf(stop), origin, Int.MAX_VALUE, emptySet(), emptySet(), false).single()
+                    origin = stop.destination!!.coordinates
+                    estimate.travelMinutes + estimate.visitMinutes
+                }
+            } else stops.sumOf { it.travelMinutes + it.visitMinutes }
+            if (estimates > remainingMinutes()) {
+                _uiState.update { it.copy(navigationError = "추정 이동·체류 시간이 남은 시간을 초과합니다. 다음 추천으로 현재 조건을 갱신해 주세요.") }
+                return
+            }
         }
         savedState["retryStage"] = targetStage
         savedState.remove<String>("retryTestId")
@@ -343,14 +419,18 @@ class RecommendationViewModel @Inject constructor(
         val candidates = candidates(stageIndex)
         candidateIndex = if (candidates.isEmpty()) 0 else candidateIndex.coerceIn(candidates.indices)
         savedState["courseSchema"] = 2
+        savedState["realPlaces"] = getRecommendations.usesRealPlaces
         savedState["stageIndex"] = stageIndex
         savedState["candidateIndex"] = candidateIndex
         savedState["selectedIds"] = ArrayList(selectedIds)
+        savedState["recommendedIds"] = ArrayList(recommendedIds)
         savedState["skippedIds"] = ArrayList(skippedIds)
         savedState["recommendations"] = ArrayList(places)
         savedState["courseRoute"] = courseRoute
         savedState["navigationError"] = _uiState.value.navigationError
         _uiState.update { it.copy(
+            realPlaces = getRecommendations.usesRealPlaces,
+            remainingMinutes = if (getRecommendations.usesRealPlaces) remainingMinutes() else null,
             stageIndex = stageIndex, place = candidates.getOrNull(candidateIndex), candidates = candidates,
             remainingCourse = if (stageIndex >= request.mode.stages.size) emptyList() else
                 listOfNotNull(candidates.getOrNull(candidateIndex)) + request.mode.stages.drop(stageIndex + 1)

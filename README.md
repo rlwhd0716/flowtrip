@@ -1,8 +1,16 @@
 ﻿# FlowTrip
 
 현대자동차 Pleos Connect 공모전을 위한 차량용 여행·데이트 동행 서비스의 Android 기본 프로젝트입니다.
+
+**2026-11-15 실제 장소 추천 확장:** 기존 화면·Repository·코스 상태·위치·NaviHelper를 유지하고 카카오 검색 분기를 추가했습니다.
+기본 추천은 Mock이며 `-PplaceDataSource=kakao -PplaceProxyUrl=https://YOUR_SERVER`로 실제 검색을 선택합니다.
+카카오 REST 키는 서버에만 보관합니다. 카카오 서비스 활성화 후 실제 검색 HTTP 200을 확인했습니다. 현재 로컬 개발 설정에서는 Android Studio의 Debug 빌드 전에 PC 프록시를 자동 시작합니다. 최초 Gradle Sync 후 기존 `app` Run/Debug를 사용하세요. 이 기능은 Windows 개발용이며 APK 단독 실행·Release 제출에는 적용되지 않습니다. 수동 실행·설정 해제 방법은 [로컬 프록시 안내](tools/place-proxy/README.md)를 참고하세요.
+검색 실패를 Mock으로 바꾸지 않으며, 외부 좌표 길안내는 Pleos 지원 미확인으로 기본 차단합니다.
+분류·변경 파일·서버 계약·추천/시간 정책·검증 결과는 [추가 구현 결과](docs/REAL_PLACE_IMPLEMENTATION.md)를 참고하세요.
+아래 Mock 중심 설명은 기본 시연 설정과 기존 구현 이력입니다.
+
 현재 프로젝트는 `gradle.properties`의 `pleosSdk=true`로 Pleos Connect 실행을 기본 설정합니다. Android Studio에서 Gradle Sync 후 실행하면 공식 NaviHelper·FusedLocation Adapter가 포함됩니다.
-일반 Android에서 Mock으로 개발할 때는 `-PpleosSdk=false`를 명시하세요. 추천 장소 데이터는 두 모드 모두 Mock입니다.
+일반 Android에서 Mock으로 개발할 때는 `-PpleosSdk=false`를 명시하세요. 기본 추천 장소 데이터는 두 모드 모두 Mock입니다.
 실제 SDK APK의 컴파일은 검증했지만 Pleos 차량 서비스에서의 실행은 아직 미검증입니다. 도착 신호를 방문 완료로 확정하지 않습니다.
 현재 연동 범위와 빌드 방법은 [P0 연동 결과](docs/PLEOS_INTEGRATION.md), 공식 API·권한 조사는 [SDK 조사](docs/PLEOS_SDK_RESEARCH.md),
 현재 화면 구성과 자동 배치 제약은 [화면 정리 기록](docs/SCREEN_CLEANUP.md), 진행도는 [PROGRESS](docs/PROGRESS.md)를 참고하세요.

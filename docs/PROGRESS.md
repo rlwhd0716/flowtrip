@@ -318,3 +318,52 @@ bash gradlew -PpleosSdk=true :app:assembleDebug :app:testDebugUnitTest :app:lint
 - 사용자 빌드 오류: 기본 인자가 있는 @Inject 생성자로 인해 인자 없는 생성자까지 주입 생성자로 인식되어 중복 오류 발생.
 - 주 생성자의 NavigationTestCatalog 기본값을 제거해 @Inject 생성자를 하나로 제한. 기존 테스트의 MockRecommendationRepository() 호출을 위해 @Inject 없는 명시적 보조 생성자를 추가함.
 - 개발용 실제 목적지 연결 로직은 변경하지 않음. 기존 사용자 요청에 따라 빌드/테스트는 실행하지 않음.
+
+## 1차 실제 장소 추천 확장 — 2026-11-15
+
+- `main/2f116f0`와 `69875e7` 이후 커밋, 현재 소스·문서, 연결된 이전 Codex 2개 작업의 최근 기록을 대조했다. 기존 화면·MVVM·Repository·FusedLocation·SDK 경로 확인·분할 생명주기를 재사용했다.
+- 기존 Repository에 `placeDataSource=mock/kakao` 분기를 추가. 기본 Mock 유지, 실제 검색 오류 시 Mock/샘플로 자동 대체하지 않음. 카카오 키는 앱에 넣지 않으며 HTTPS 프록시가 필요하다. 현재 저장소에 서버가 없어 서버 계약과 설정을 문서화했다.
+- 실제 장소 ID/provider/주소/카테고리/좌표/전화/URL 매핑. Mock 사진·메뉴·가격과 혼합하지 않는다. 거리·체류·이동 추정, 관심 검색어, 방문 이력 우선순위, 이미 표시한 후보 제외를 적용했다.
+- 기존 다음 추천/다음 코스에서 최신 위치와 실제 경과시간으로 재검색. 도착은 방문 완료가 아니며 사용자가 방문 완료 버튼을 눌러야 기록한다. 일 입력은 첫날 8시간 활동만 지원함을 표시한다.
+- 외부 좌표 길안내는 공식 지원 확인 전 기본 차단. 명시적인 `pleosCoordinateRouting=true` 시험 분기는 실제 좌표와 빈 POI 문자열을 전달하며 기존 완료/목적지/안내/경유 대조를 유지한다. 카카오 ID를 Pleos POI로 쓰지 않음. 공식 샘플 패널과 경유 기능 유지.
+- 기존 Navigation Compose 복원 키 Lint 오류를 수정했다. 이번 요청에 따라 빌드·단위 테스트·Lint·계측 APK 빌드를 수행했다. 최종 명령별 결과와 변경 파일 목록은 아래 보고서를 기준으로 한다.
+- 실기기 연결 없음, 프록시/키 없음: 실제 검색 응답, 외부 좌표 길안내, 연속 경로 변경, 분할/복귀 UI 시나리오는 미검증. 자동 두 앱 배치가 해결됐다고 보고하지 않는다.
+- 상세 분류·설정·검증·남은 작업: [REAL_PLACE_IMPLEMENTATION.md](REAL_PLACE_IMPLEMENTATION.md).
+
+## REST 키 및 개발용 카카오 프록시 연결 — 2026-11-15
+
+- 전달받은 REST 키를 Git 제외 `secrets.properties`에만 저장. 앱/BuildConfig/버전 관리 소스에는 넣지 않았다.
+- `tools/place-proxy`에 Node 기본 모듈만 사용하는 loopback 개발 서버, 독립 테스트, 실제 카카오 호출 검증 명령을 추가했다. 고정 주소/키워드 검색 경로만 허용하고 실패를 Mock으로 대체하지 않는다.
+- `place-proxy.local.properties`의 주소가 있는 Debug 빌드만 실제 검색으로 전환한다. Release의 HTTPS 전용 정책은 유지한다. HTTP 예외는 Debug의 로컬/에뮬레이터 주소만 허용한다.
+- 실제 카카오 두 API는 모두 403 / NotAuthorizedError / `App(FlowTrip) disabled OPEN_MAP_AND_LOCAL service.` 응답을 확인했다. 카카오맵 사용 설정 ON이 필요하며 검색 성공으로 보고하지 않는다. 앱에도 서비스 비활성화 원인을 구체적으로 표시한다.
+- 상세 실행 및 검증: [개발용 프록시](../tools/place-proxy/README.md).
+
+## Pleos → 로컬 프록시 연결 시간 초과 수정
+
+- 서비스 활성화 뒤 PC의 주소/장소 검색은 HTTP 200을 확인했다. 이후 Pleos의 `10.0.2.2:8787` 연결 시간 초과 신고 시 PC 8787 포트에 프록시가 없고 ADB reverse 매핑도 없었다.
+- 개발 주소를 `127.0.0.1:8787` + ADB reverse로 바꾸고 `tools/place-proxy/start.ps1`을 추가했다. 상태 확인, 숨김 백그라운드 서버 시작, 기기별 포트 연결, Git 제외 Debug URL 저장을 한 번에 수행한다. PC/AVD 재시작 뒤 다시 실행한다.
+- `/health`는 카카오를 호출하지 않고 로컬 프록시 실행 여부만 응답한다. 키/위치는 출력하지 않는다. Debug의 로컬 연결 예외에는 실행 스크립트를 안내하도록 오류 문구를 수정했다.
+- 현재 실행 중인 프록시로 PC 검색 HTTP 200/3건 및 `adb reverse` 매핑을 확인했다. 앱에서의 최종 검증은 프록시 안내 문서의 후속 결과를 기준으로 한다.
+- 후속 검증: Pleos 에뮬레이터 내부에서 `127.0.0.1:8787`, 기존 `10.0.2.2:8787` 모두 실제 검색 HTTP 200/장소 JSON 확인. 수정 메인 APK 설치 `Success` 확인. 계측 APK 설치 완료 응답 지연으로 계측 실행은 미완료이며 소켓 경로 검증과 구분한다. 빌드/45개 단위 테스트/2개 프록시 테스트/Lint 통과.
+
+## 개발용 프록시 자동 시작
+
+- 사용자 요청에 따라 `preDebugBuild` 전에 `startLocalPlaceProxy` 작업을 연결했다. Git 제외 로컬 설정 `autoStartPlaceProxy=true`로 활성화하며 다른 환경의 기본값은 false이다. Release에는 연결하지 않는다.
+- 자동 모드는 Pleos에서 HTTP 200을 확인한 `10.0.2.2:8787` + `start.ps1 -ServerOnly`를 사용해, AVD 부팅/ADB reverse 재연결을 기다리지 않는다. 기존 127.0.0.1/ADB 수동 경로도 유지한다.
+- Gradle의 Windows 관리 프로세스가 서버 수명까지 기다리는 문제를 확인해 직접 실행기와 `launch.mjs`로 분리했다. 새 서버 시작, 빌드 종료 뒤 서버 유지, 기존 서버 재사용 및 Debug 빌드 성공을 확인했다. 검증용 포트의 프로세스만 정리했다.
+- 현재 Android Studio `app` 실행 구성에는 기존 Gradle BeforeRun 단계가 켜져 있어 일반 Run/Debug 빌드에 적용된다. 최초 Sync가 필요하며, 기기 아이콘 실행이나 빌드를 생략하는 실행은 PC 서버를 새로 시작하지 않는다. 실제 IDE 실행 버튼 자동 조작 검증은 하지 않았다.
+
+## Pleos Activity class does not exist 해결
+
+- 소스/병합 Manifest에는 `com.github.flowtrip.MainActivity`가 정상 등록되어 있었다. 클래스 이름이나 Manifest를 바꾸지 않았다.
+- AVD의 현재 사용자 ID는 10인데 본 앱은 user 0에만 설치되어 있었다. user 10에서는 테스트 APK만 조회되고 MainActivity resolve가 `No activity found`였다.
+- `cmd package install-existing --user 10 com.github.flowtrip`으로 현재 운전자 계정에 기존 패키지를 등록했다. 앱 삭제/데이터 초기화 없이 처리했다. 이후 user 10에서 본 앱/Activity resolve 및 앱 프로세스 PID를 확인했다.
+- `am start -W`는 첫 실행 권한 요청 및 화면 지연으로 timeout을 표시했지만, ActivityManager에서 user 10의 MainActivity와 그 위의 FlowTrip 권한 요청 Activity가 표시된 것을 확인했다. 권한은 사용자가 선택하도록 남겼다.
+- 로컬 Android Studio `app` 실행 구성의 `ALL_USERS`를 true로 변경했다. `.idea/workspace.xml`은 기존 Git 제외 파일이다. 이 변경은 앱 코드/Release APK 설정을 바꾸지 않는다.
+
+## 데이트 실제 장소 후보 없음 진단
+
+- 현재 UI에서 5시간 입력과 해외 기본 GPS(37.42200, -122.08400)를 확인했다. API는 국내 장소를 반환했지만 거리 기반 이동시간 계산에서 모든 후보가 제외됐다. 일반 오류 문구가 위치 문제를 숨겼다.
+- 에뮬레이터에만 성남 판교 시험 GPS를 설정하고, 기존 5시간 조건에서 실제 식당 후보 3개가 표시되는 것을 확인했다. 실제 차량/앱 코드의 GPS 대체나 Mock fallback은 추가하지 않았다.
+- 해외 위치 사전 안내, 검색 반경 검증, 후보 탈락 원인별 오류, 오류 화면의 남은 분 표시를 추가했다. 기존 점수/시간 필터를 우회하지 않는다.
+- 빌드/48개 단위 테스트/Lint 통과. 계측 테스트 및 최종 설치 결과와 변경 파일은 [PLACE_SEARCH_DIAGNOSTICS.md](PLACE_SEARCH_DIAGNOSTICS.md)에 기록한다.

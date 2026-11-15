@@ -31,6 +31,10 @@ class HomeViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             try {
+                if (getRecommendations.usesRealPlaces) {
+                    _uiState.value = HomeUiState(getRecommendations.recentVisits(), false)
+                    return@launch
+                }
                 val all = TravelMode.entries.flatMap { mode ->
                     getRecommendations(RecommendationRequest(mode, "예시 지역", 120, "추천에 맡기기"))
                 }

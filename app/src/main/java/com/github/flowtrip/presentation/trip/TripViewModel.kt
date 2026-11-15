@@ -55,7 +55,7 @@ class TripViewModel @Inject constructor(private val savedState: SavedStateHandle
         update(_uiState.value.copy(preferences = if (value in selected) selected - value else selected + value))
     }
     fun createRequest(): RecommendationRequest? = _uiState.value.takeIf { it.canStart }?.let {
-        RecommendationRequest(TravelMode.TRIP, it.destination, it.availableMinutes, it.preference)
+        RecommendationRequest(TravelMode.TRIP, it.destination, it.availableMinutes, it.preference, dayInput = it.timeUnit == AvailableTimeUnit.DAYS)
     }
     private fun update(state: TripUiState) {
         savedState["province"] = state.province

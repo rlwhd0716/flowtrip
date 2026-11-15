@@ -6,6 +6,21 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RouteConfirmationTest {
+    @Test fun `external provider ID is never compared as a Pleos POI but coordinates and completed guidance must match`() {
+        val external = Destination("kakao:123", "실제 검색 장소", Coordinates(37.5, 127.0), DataSource.KAKAO)
+        val actual = external.copy(id = "pleos-id", source = DataSource.PLEOS, poiId = "different-provider-id")
+        val confirmation = RouteConfirmation(external)
+        confirmation.onRoutingCompleted()
+        confirmation.onWaypoints(emptyList())
+        confirmation.onRouteState(false, true)
+        confirmation.onDestination(actual.copy(source = DataSource.MOCK))
+        assertEquals(RoutingDecision.WAITING, confirmation.decision)
+        confirmation.onDestination(actual.copy(coordinates = Coordinates(37.6, 127.0)))
+        assertEquals(RoutingDecision.WAITING, confirmation.decision)
+        confirmation.onDestination(actual)
+        assertEquals(RoutingDecision.CONFIRMED, confirmation.decision)
+        assertNull(external.poiId)
+    }
     private val expected = Destination("a", "승인 장소", Coordinates(37.5, 127.0), DataSource.PLEOS, poiId = "a")
     @Test fun `cancelling previous guidance requires new completion and fresh matching snapshots`() {
         val confirmation = RouteConfirmation(expected)

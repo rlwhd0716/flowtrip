@@ -95,7 +95,9 @@ private fun RecentPlaceCard(place: Place, onClick: () -> Unit, modifier: Modifie
     OutlinedCard(onClick = onClick, shape = RoundedCornerShape(18.dp), modifier = modifier.testTag("reuse-${place.id}"),
         colors = CardDefaults.outlinedCardColors(containerColor = Color.White)) {
         Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            PlacePhoto(place.image, Modifier.size(width = 68.dp, height = 88.dp).clip(RoundedCornerShape(12.dp)))
+            if (place.provider == com.github.flowtrip.domain.model.DataSource.MOCK)
+                PlacePhoto(place.image, Modifier.size(width = 68.dp, height = 88.dp).clip(RoundedCornerShape(12.dp)))
+            else Box(Modifier.size(width = 68.dp, height = 88.dp), contentAlignment = Alignment.Center) { Text("사진 미제공", fontSize = 12.sp) }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(place.name, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Text(place.stage.title, fontSize = 13.sp)

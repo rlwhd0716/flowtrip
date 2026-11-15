@@ -41,6 +41,7 @@ fun RecommendationScreen(
     onNextCourse: () -> Unit, onRetry: () -> Unit, onRetryRoute: () -> Unit,
     onHome: () -> Unit, onBack: () -> Unit,
     onCandidate: (Int) -> Unit = {}, onMode: (TravelMode) -> Unit = {}, onRestart: () -> Unit = {},
+    onTestRoute: (String, Boolean) -> Unit = { _, _ -> },
 ) = FlowTripTheme(darkTheme = false) {
     val busy = state.isRequestingRoute || state.isOpeningMap || state.isLoading
     // Apply only to the app window. Insets belong to the Pleos system bars.
@@ -50,16 +51,21 @@ fun RecommendationScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ModeSelector(state.request.mode, !busy, onMode, onBack, wide)
                 CourseProgress(state, !busy, onRestart, wide)
-                DemoModeNotice()
+                DemoModeNotice(state)
                 when {
                     state.isLoading -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Green) }
                     state.error != null -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                         Text(state.error)
                         Button(onClick = onRetry) { Text("다시 시도") }
+                        if (state.realPlaces) {
+                            OutlinedButton(onClick = onRestart) { Text("새 코스 시작") }
+                            TextButton(onClick = onBack) { Text("조건 변경") }
+                        }
+                        NavigationTestPanel(state, onTestRoute, onRetryRoute)
                     }
                     state.isComplete -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("코스 완료", style = MaterialTheme.typography.headlineMedium)
-                        Text("선택한 장소 ${state.selectedPlaces.size}곳 · 예시 코스")
+                        Text("선택한 장소 ${state.selectedPlaces.size}곳 · ${if (state.realPlaces) "방문 완료 확인" else "예시 코스"}")
                         state.selectedPlaces.forEachIndexed { index, place -> Text("${index + 1}. ${place.name}") }
                         Button(onClick = onRestart) { Text("새 코스 시작") }
                         OutlinedButton(onClick = onHome) { Text("홈으로") }
@@ -67,16 +73,17 @@ fun RecommendationScreen(
                     else -> state.place?.let { place ->
                         if (wide) {
                             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                RecommendationList(state, !busy, onCandidate, Modifier.weight(0.45f).fillMaxHeight())
+                                RecommendationList(state, !busy, onCandidate, Modifier.weight(0.45f).fillMaxHeight(), onTestRoute = onTestRoute, onRetryRoute = onRetryRoute)
                                 PlaceDetail(place, Modifier.weight(0.55f).fillMaxHeight())
                             }
                         } else {
                             // Independently scrollable content keeps actions outside the scroll area.
                             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                RecommendationList(state, !busy, onCandidate, scrollable = false)
+                                RecommendationList(state, !busy, onCandidate, scrollable = false, onTestRoute = onTestRoute, onRetryRoute = onRetryRoute)
                                 PlaceDetail(place, scrollable = false)
                             }
                         }
+                        state.arrivalSignal?.let { Text("도착 신호 수신 · 방문 완료는 직접 확인해 주세요.", fontSize = 13.sp) }
                         val message = state.navigationError ?: when {
                             state.isRequestingRoute -> "${place.destination?.name.orEmpty()} 경로 결과 확인 중…"
                             state.navigationDiffers -> "내비게이션은 다른 목적지를 안내 중입니다."
@@ -156,12 +163,14 @@ private fun CourseProgress(state: RecommendationUiState, enabled: Boolean, onRes
 }
 
 @Composable
-private fun DemoModeNotice() {
+private fun DemoModeNotice(state: RecommendationUiState) {
     Surface(color = Color(0xFFFFEEDD), shape = RoundedCornerShape(20.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FlowIcon(FlowIconAsset.INFO, Modifier.size(20.dp), tint = Color(0xFF975016))
-            Text("시연 모드 · 추천 장소와 실제 길안내 목적지가 다릅니다.",
+            Text(if (state.realPlaces) "카카오 실제 장소 · 이동·체류 추정 · 남은 ${state.remainingMinutes ?: "—"}분" +
+                if (state.request.dayInput) " · 첫날 8시간 활동만 지원" else ""
+                else "시연 모드 · 추천 장소와 실제 길안내 목적지가 다릅니다.",
                 Modifier.weight(1f), color = Color(0xFF975016), fontSize = 14.sp)
         }
     }
@@ -169,7 +178,8 @@ private fun DemoModeNotice() {
 
 @Composable
 private fun RecommendationList(state: RecommendationUiState, enabled: Boolean, onCandidate: (Int) -> Unit,
-    modifier: Modifier = Modifier, scrollable: Boolean = true) {
+    modifier: Modifier = Modifier, scrollable: Boolean = true,
+    onTestRoute: (String, Boolean) -> Unit = { _, _ -> }, onRetryRoute: () -> Unit = {}) {
     val scrollState = rememberScrollState()
     Column(if (scrollable) modifier.verticalScroll(scrollState) else modifier,
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -183,6 +193,7 @@ private fun RecommendationList(state: RecommendationUiState, enabled: Boolean, o
         state.candidates.forEachIndexed { index, place ->
             RecommendationCard(place, state.candidateIndex == index, enabled, { onCandidate(index) })
         }
+        NavigationTestPanel(state, onTestRoute, onRetryRoute)
     }
 }
 
@@ -194,13 +205,15 @@ private fun RecommendationCard(place: Place, selected: Boolean, enabled: Boolean
         .testTag("candidate-${place.id}")
         .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick).padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        PlacePhoto(place.image, Modifier.size(76.dp).clip(RoundedCornerShape(12.dp)))
+        if (place.provider == DataSource.MOCK) PlacePhoto(place.image, Modifier.size(76.dp).clip(RoundedCornerShape(12.dp)))
+        else Box(Modifier.size(76.dp).background(Mint), contentAlignment = Alignment.Center) { Text("사진\n미제공", fontSize = 12.sp) }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(place.name, fontSize = 19.sp, fontWeight = FontWeight.Bold, maxLines = 2)
-            Text("${place.stage.title} · 예시 정보", fontSize = 13.sp, color = Green)
+            Text(if (place.provider == DataSource.MOCK) "${place.stage.title} · 예시 정보" else "${place.category} · 카카오", fontSize = 13.sp, color = Green)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 FlowIcon(FlowIconAsset.TRIP_LOCATION, Modifier.size(16.dp))
-                Text(place.destination?.let { "길안내 테스트: ${it.name}" } ?: "테스트 목적지 미설정", fontSize = 13.sp,
+                Text(if (place.provider == DataSource.MOCK) place.destination?.let { "길안내 테스트: ${it.name}" } ?: "테스트 목적지 미설정"
+                    else "약 ${"%.1f".format(place.distanceKm)}km 직선 · 이동 약 ${place.travelMinutes}분 + 체류 ${place.visitMinutes}분 추정", fontSize = 13.sp,
                     modifier = Modifier.weight(1f))
             }
         }
@@ -215,12 +228,13 @@ private fun PlaceDetail(place: Place, modifier: Modifier = Modifier, scrollable:
     Column(if (scrollable) container.verticalScroll(scrollState) else container,
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(Modifier.fillMaxWidth().height(154.dp).clip(RoundedCornerShape(16.dp))) {
-            PlacePhoto(place.image, Modifier.fillMaxSize())
+            if (place.provider == DataSource.MOCK) PlacePhoto(place.image, Modifier.fillMaxSize())
+            else Box(Modifier.fillMaxSize().background(Mint), contentAlignment = Alignment.TopCenter) { Text("장소 사진 미제공") }
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC102D29)))))
             Column(Modifier.align(Alignment.BottomStart).padding(14.dp)) {
                 Text(place.name, color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.testTag("detail-title"))
-                Text("예시 이미지 · ${place.stage.title}", color = Color.White, fontSize = 13.sp)
+                Text(if (place.provider == DataSource.MOCK) "예시 이미지 · ${place.stage.title}" else "카카오 로컬 · ${place.id}", color = Color.White, fontSize = 13.sp)
             }
         }
         Text(place.description, fontSize = 16.sp)
@@ -233,7 +247,8 @@ private fun PlaceDetail(place: Place, modifier: Modifier = Modifier, scrollable:
             HorizontalDivider(color = Color(0xFFE2E9E6))
         }
         Text(place.reason, fontSize = 14.sp, color = Green)
-        Text("상세 정보와 이미지는 Mock 예시입니다. 실제 가격·운영·주차 정보는 방문 전 확인해 주세요.", fontSize = 12.sp, color = Color.Gray)
+        Text(if (place.provider == DataSource.MOCK) "상세 정보와 이미지는 Mock 예시입니다. 실제 가격·운영·주차 정보는 방문 전 확인해 주세요."
+            else "가격·영업시간·주차 정보 미제공. 방문 전 상세 페이지에서 확인해 주세요.", fontSize = 12.sp, color = Color.Gray)
     }
 }
 
@@ -244,7 +259,7 @@ private fun NavigationAction(place: Place, busy: Boolean, onSelect: () -> Unit) 
         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("navigation-action")) {
         FlowIcon(FlowIconAsset.NAVIGATE, Modifier.size(24.dp), tint = if (!busy && place.destination != null) Color.White else Color.Gray)
         Spacer(Modifier.width(10.dp))
-        Text(place.destination?.let { "${it.name}${if (it.name == "42dot") "으로" else "로"} 길안내 테스트" }
+        Text(place.destination?.let { if (place.provider != DataSource.MOCK) "${it.name} 길안내 요청" else "${it.name}${if (it.name == "42dot") "으로" else "로"} 길안내 테스트" }
             ?: "길안내 목적지 미설정", fontSize = 18.sp)
     }
 }
@@ -258,7 +273,8 @@ private fun CourseAction(state: RecommendationUiState, busy: Boolean, onAnother:
             FlowIcon(FlowIconAsset.NEXT, Modifier.size(20.dp), tint = if (busy) Color.Gray else Ink)
         }
         OutlinedButton(onClick = onNext, enabled = !busy, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
-            Text(if (state.stageIndex == state.request.mode.stages.lastIndex) "코스 완료" else "다음 코스", fontSize = 16.sp)
+            Text(if (state.realPlaces) "방문 완료 · " + if (state.stageIndex == state.request.mode.stages.lastIndex) "코스 완료" else "다음 코스"
+                else if (state.stageIndex == state.request.mode.stages.lastIndex) "코스 완료" else "다음 코스", fontSize = 16.sp)
             FlowIcon(if (state.stageIndex == state.request.mode.stages.lastIndex) FlowIconAsset.CHECK else FlowIconAsset.NEXT,
                 Modifier.padding(start = 4.dp).size(20.dp),
                 tint = if (state.stageIndex == state.request.mode.stages.lastIndex) null else if (busy) Color.Gray else Green)

@@ -25,6 +25,10 @@ data class RecommendationRequest(
     val availableMinutes: Int,
     val preference: String,
     val preferNewPlaces: Boolean = false,
+    val dayInput: Boolean = false,
+    val startStage: Int = 0,
+    val remainingMinutes: Int? = null,
+    val excludedIds: Set<String> = emptySet(),
 )
 
 data class Place(
@@ -42,4 +46,8 @@ data class Place(
     val details: List<PlaceDetail> = emptyList(),
     val image: PlaceImage = PlaceImage.RESTAURANT,
     val demoRoute: DemoRouteMapping = DemoRouteMapping.UNSET,
+    val provider: DataSource = DataSource.MOCK,
+    val category: String = "",
+    val phone: String = "",
+    val detailUrl: String = "",
 ) : java.io.Serializable

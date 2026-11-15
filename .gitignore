@@ -30,6 +30,7 @@ local.properties
 .env.*
 !.env.example
 secrets.properties
+place-proxy.local.properties
 apikey.properties
 key.properties
 keystore.properties

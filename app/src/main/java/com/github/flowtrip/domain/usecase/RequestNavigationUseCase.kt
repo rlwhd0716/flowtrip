@@ -30,9 +30,9 @@ class RequestNavigationUseCase(
         if (!userConfirmed) return PlatformResult.Failure("목적지 변경 승인이 필요합니다.")
         if (!ux.state.value.allowsInteraction) return PlatformResult.Failure("차량 UX 제한으로 목적지를 변경할 수 없습니다.")
         if (navigation.state.value.source == DataSource.PLEOS) {
-            if (stops.any { it.source != DataSource.PLEOS }) return PlatformResult.Failure(
+            if (stops.any { it.source == DataSource.MOCK }) return PlatformResult.Failure(
                 "Mock 장소는 실제 내비게이션으로 전송할 수 없습니다. 실제 장소 데이터 연동이 필요합니다.")
-            if (stops.any { it.poiId.isNullOrBlank() || it.poiSubId.isNullOrBlank() }) return PlatformResult.Failure(
+            if (stops.any { it.source == DataSource.PLEOS && (it.poiId.isNullOrBlank() || it.poiSubId.isNullOrBlank()) }) return PlatformResult.Failure(
                 "실제 장소의 POI 식별 정보가 필요합니다.")
             if (navigation.state.value.service != ServiceStatus.READY) return PlatformResult.Failure(
                 "Pleos 내비게이션이 준비되지 않았습니다.")

@@ -1,6 +1,6 @@
 package com.github.flowtrip.domain.model
 
-enum class DataSource { MOCK, PLEOS }
+enum class DataSource { MOCK, PLEOS, KAKAO }
 enum class ServiceStatus { STOPPED, CONNECTING, READY, UNSUPPORTED, PERMISSION_DENIED, ERROR }
 enum class RouteState { IDLE, SEARCHING, GUIDING, ARRIVED, FAILED }
 enum class LocationStatus { UNAVAILABLE, AVAILABLE, STALE, UNSUPPORTED, PERMISSION_DENIED, ERROR }
